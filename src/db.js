@@ -40,9 +40,10 @@ CREATE TABLE IF NOT EXISTS campaigns (
 -- Evidence: what actually happened. Pseudonymous refs only; no names, emails or phone numbers.
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY, campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('form_submit','crm_record','spend','deal')),
+  kind TEXT NOT NULL CHECK (kind IN ('form_submit','crm_record','spend','deal','conversation')),
   ref TEXT, is_test INTEGER NOT NULL DEFAULT 0, fields TEXT NOT NULL DEFAULT '{}', amount REAL NOT NULL DEFAULT 0,
-  at INTEGER NOT NULL, received_at INTEGER NOT NULL, source TEXT NOT NULL DEFAULT '');
+  at INTEGER NOT NULL, received_at INTEGER NOT NULL, source TEXT NOT NULL DEFAULT '',
+  body TEXT, expires_at INTEGER);
 CREATE INDEX IF NOT EXISTS events_campaign ON events(campaign_id, kind, at);
 CREATE INDEX IF NOT EXISTS events_ref ON events(campaign_id, ref, kind, at);
 
@@ -64,10 +65,40 @@ CREATE TABLE IF NOT EXISTS tasks (
   owner_id INTEGER REFERENCES users(id), code TEXT NOT NULL, rule TEXT, cause TEXT NOT NULL DEFAULT '{}',
   created_at INTEGER NOT NULL, done_at INTEGER, done_by INTEGER REFERENCES users(id));
 
+-- Level 2: read-only investigations by the AI investigator, with every tool call and the checked findings.
+CREATE TABLE IF NOT EXISTS investigations (
+  id INTEGER PRIMARY KEY, campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('running','done','failed','refused')), trigger TEXT NOT NULL DEFAULT 'human',
+  requested_by INTEGER REFERENCES users(id), model TEXT NOT NULL, started_at INTEGER NOT NULL, finished_at INTEGER,
+  report TEXT NOT NULL DEFAULT '{}', tool_calls TEXT NOT NULL DEFAULT '[]', usage TEXT NOT NULL DEFAULT '{}', error TEXT);
+CREATE INDEX IF NOT EXISTS investigations_campaign ON investigations(campaign_id, id DESC);
+
 CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY, at INTEGER NOT NULL, actor_id INTEGER, action TEXT NOT NULL,
   campaign_id INTEGER, data TEXT NOT NULL DEFAULT '{}', prev_hash TEXT NOT NULL, hash TEXT NOT NULL);
 `;
+
+/**
+ * v1 → v2: events gain 'conversation', a text body and an expiry date. SQLite cannot alter a CHECK
+ * constraint, so the table is rebuilt inside one transaction (ids are kept, so evidence references stay valid).
+ */
+function migrate(db, metaGet, metaSet) {
+  const v = metaGet.get('schema_version')?.value;
+  if (!v) return metaSet.run('schema_version', '2'); // fresh database: SCHEMA is already v2
+  if (v === '1') {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.exec(`ALTER TABLE events RENAME TO events_v1;
+        DROP INDEX IF EXISTS events_campaign; DROP INDEX IF EXISTS events_ref;`);
+      db.exec(SCHEMA.match(/CREATE TABLE IF NOT EXISTS events \([\s\S]*?\);[\s\S]*?events_ref[^;]*;/)[0]);
+      db.exec(`INSERT INTO events (id, campaign_id, kind, ref, is_test, fields, amount, at, received_at, source)
+        SELECT id, campaign_id, kind, ref, is_test, fields, amount, at, received_at, source FROM events_v1;
+        DROP TABLE events_v1;`);
+      metaSet.run('schema_version', '2');
+      db.exec('COMMIT');
+    } catch (e) { db.exec('ROLLBACK'); throw e; }
+  }
+}
 
 export function openDb(file) {
   if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
@@ -75,7 +106,7 @@ export function openDb(file) {
   db.exec(SCHEMA);
   const metaGet = db.prepare('SELECT value FROM meta WHERE key = ?');
   const metaSet = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
-  if (!metaGet.get('schema_version')) metaSet.run('schema_version', '1');
+  migrate(db, metaGet, metaSet);
   // Per-installation secret for pseudonymising emails. Never leaves the database.
   if (!metaGet.get('pseudonym_salt')) metaSet.run('pseudonym_salt', randomBytes(24).toString('hex'));
 

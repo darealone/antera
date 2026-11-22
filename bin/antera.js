@@ -26,18 +26,20 @@ function args(argv) {
   return out;
 }
 
-const HELP = `ANTERA ${pkg.version} — decisions that hold (Foundation + Level 1: Prevent)
+const HELP = `ANTERA ${pkg.version} — decisions that hold (Foundation, Level 1: Prevent, Level 2: Understand)
 
 Usage:
   antera serve [--port 8080] [--host 127.0.0.1] [--data ./data/antera.db]
                [--config ./antera.config.json] [--secure-cookies] [--demo]
   antera init                     write antera.config.json (example) into this folder
   antera recheck [--data ...]     re-run every campaign's chain once (for cron); exit 1 if anything was paused
+  antera investigate <id> [--data ...]  read-only AI investigation of one campaign (needs @anthropic-ai/sdk + API key)
   antera verify-audit [--data ...]  check the audit log hash chain
   antera --version
 
 Environment:
   PORT, HOST, ANTERA_DATA, ANTERA_CONFIG, ANTERA_SECURE_COOKIES=1
+  ANTHROPIC_API_KEY               enables the Level 2 investigator
 `;
 
 const a = args(process.argv.slice(2));
@@ -70,6 +72,7 @@ if (cmd === 'serve') {
   const cfg = await config(demo ? { adapter: { type: 'demo' } } : {});
   const secureCookies = !!a['secure-cookies'] || process.env.ANTERA_SECURE_COOKIES === '1';
   const { server, svc, db } = createApp({ config: cfg, dbFile, demo, secureCookies });
+  const inv = await svc.prepare();
   server.listen(port, host, async () => {
     const base = `http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${port}`;
     if (demo && svc.needsSetup()) {
@@ -81,6 +84,8 @@ if (cmd === 'serve') {
     console.log(`  data:    ${dbFile}`);
     console.log(`  config:  ${cfg.file ?? '(defaults)'}`);
     console.log(`  adapter: ${svc.adapterType}${svc.adapterType === 'manual' ? ' (pauses become tasks; set adapter.type "webhook" to automate)' : ''}`);
+    const invText = { ready: 'ready (Level 2)', no_sdk: 'off, run "npm install" to add @anthropic-ai/sdk', no_key: 'off, set ANTHROPIC_API_KEY', disabled: 'disabled in config' };
+    console.log(`  investigator: ${invText[inv] ?? inv}`);
     if (svc.needsSetup()) console.log('  First start: open the URL above to create the admin account.');
     if (demo) console.log('  DEMO MODE: fictitious team, campaigns and evidence. Do not use demo data in production.');
   });
@@ -101,6 +106,27 @@ if (cmd === 'serve') {
   }
   db.close();
   process.exit(paused ? 1 : 0);
+} else if (cmd === 'investigate') {
+  const id = Number(a._[1]);
+  if (!id) { console.error('Usage: antera investigate <campaignId>'); process.exit(3); }
+  const { openDb } = await import('../src/db.js');
+  const { createService } = await import('../src/service.js');
+  const db = openDb(dataFile(false));
+  const svc = createService(db, await config());
+  const status = await svc.prepare();
+  if (status !== 'ready') { console.error(`Investigator not available: ${status}`); process.exit(3); }
+  console.log(`Investigating campaign ${id} (read-only)…`);
+  const r = await svc.startInvestigation(null, id, { trigger: 'cli', wait: true });
+  console.log(`Status: ${r.status}${r.error ? ' (' + r.error + ')' : ''}  ·  ${r.tool_calls.length} tool calls  ·  ~$${r.usage.usd ?? '?'}`);
+  if (r.report.summary) console.log('\n' + r.report.summary);
+  for (const f of r.report.findings ?? []) {
+    console.log(`\n● ${f.title} [${f.confidence}]`);
+    for (const o of f.observed) console.log(`  observed: ${o.statement} (${o.evidence.join(', ')})`);
+    console.log(`  inferred: ${f.inferred}\n  verify:   ${f.to_verify}`);
+  }
+  if (r.report.unsupported?.length) console.log(`\n${r.report.unsupported.length} claim(s) removed for lack of evidence.`);
+  db.close();
+  process.exit(r.status === 'done' ? 0 : 1);
 } else if (cmd === 'verify-audit') {
   const { openDb } = await import('../src/db.js');
   const db = openDb(dataFile(false));

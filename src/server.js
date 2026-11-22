@@ -59,9 +59,9 @@ function router(routes) {
   };
 }
 
-export function createApp({ config, dbFile, demo = false, secureCookies = false, clock, fetch: fetchImpl, log } = {}) {
+export function createApp({ config, dbFile, demo = false, secureCookies = false, clock, fetch: fetchImpl, log, anthropic } = {}) {
   const db = openDb(dbFile);
-  const svc = createService(db, config, { clock, fetch: fetchImpl, log });
+  const svc = createService(db, config, { clock, fetch: fetchImpl, log, anthropic });
   const loginLimit = rateLimiter(10, 60_000);
   const demoRoutes = demo ? mountDemo(svc, db, { clock, config }) : null;
 
@@ -70,7 +70,7 @@ export function createApp({ config, dbFile, demo = false, secureCookies = false,
 
   const route = router([
     ['GET', '/api/health', () => ({ ok: true, rulesVersion: RULES_VERSION, controllerVersion: CONTROLLER_VERSION })],
-    ['GET', '/api/config', () => ({ ...publicConfig(config), needsSetup: svc.needsSetup(), rulesVersion: RULES_VERSION, controllerVersion: CONTROLLER_VERSION, demo })],
+    ['GET', '/api/config', () => ({ ...publicConfig(config), needsSetup: svc.needsSetup(), rulesVersion: RULES_VERSION, controllerVersion: CONTROLLER_VERSION, demo, investigator: svc.investigatorStatus() })],
     ['POST', '/api/setup', ({ body, res }) => {
       if (!svc.needsSetup()) throw new HttpError(409, 'ALREADY_SET_UP');
       const user = svc.createUser(null, { ...body, role: 'admin' });
@@ -114,6 +114,9 @@ export function createApp({ config, dbFile, demo = false, secureCookies = false,
       return { state: d.campaign.state, launch: d.campaign.launch_status, health: d.campaign.health, spend: d.campaign.spend_state, fingerprint: d.campaign.fingerprint, rulesVersion: d.rulesVersion };
     }],
 
+    ['POST', '/api/campaigns/:id/investigate', ({ user, params }) => svc.startInvestigation(need(user), id(params.id))],
+    ['GET', '/api/campaigns/:id/investigations', ({ user, params }) => svc.listInvestigations(need(user), id(params.id))],
+    ['GET', '/api/investigations/:id', ({ user, params }) => svc.getInvestigation(need(user), id(params.id))],
     ['POST', '/api/ingest', ({ user, body }) => svc.ingest(need(user), body)],
     ['POST', '/api/recheck', ({ user }) => { need(user); return svc.recheckAll(); }],
     ['GET', '/api/tasks', ({ user, url }) => svc.listTasks(need(user), { open: url.searchParams.get('all') !== '1' })],

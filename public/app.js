@@ -220,6 +220,7 @@ async function viewCampaign(id) {
       h('p', { class: 'small muted', text: t('chain_sub') }), chainView(d.launch?.results), findingsView(d.launch?.results)),
     (c.state === 'live' || c.state === 'paused') && d.monitor ? panel(null, h('div', { class: 'row between' }, h('h2', { text: t('mon_title') }), h('span', { class: 'small muted', text: t('checked', { when: fmtDate(d.monitor.ran_at) }) })),
       h('p', { class: 'small muted', text: t('mon_sub', { h: d.evidence.windowHours }) }), findingsView(d.monitor.results.filter(r => ['sync', 'complete', 'activity'].includes(r.id)))) : null,
+    investigationPanel(d, reload),
     configPanel(d, reload),
     auditPanel(id));
 
@@ -245,6 +246,64 @@ async function viewCampaign(id) {
     h('a', { href: '#/', class: 'small muted', text: t('back') }),
     h('div', {}, h('span', { class: 'kicker', text: c.channel || '—' }), h('h1', { text: c.name }), h('p', { class: 'small muted', text: `${t('owner')}: ${c.owner_name} · rules ${d.rulesVersion} · ${d.controllerVersion}` })),
     hero, h('div', { class: 'grid2' }, left, right));
+}
+
+// ---------- Level 2: investigation ----------
+let pollTimer;
+function investigationPanel(d, reload) {
+  const id = d.campaign.id;
+  const list = d.investigations ?? [];
+  const running = list.find(x => x.status === 'running');
+  clearTimeout(pollTimer);
+  // While an investigation runs in the background, refresh this page every few seconds.
+  if (running) pollTimer = setTimeout(() => { if (location.hash === '#/c/' + id) reload(); }, 3000);
+
+  const shown = h('div');
+  const show = inv => shown.replaceChildren(inv ? investigationView(inv) : h('p', { class: 'small muted', text: t('inv_none') }));
+  show(list.find(x => x.status !== 'running') ?? null);
+
+  const ready = d.investigator === 'ready';
+  const startBtn = h('button', { class: 'primary', disabled: !ready || !!running || d.campaign.state === 'ended', text: running ? t('inv_running_btn') : t('inv_run'),
+    onclick: e => act(e.currentTarget, async () => { await api(`/campaigns/${id}/investigate`, { method: 'POST' }); reload(); }) });
+  const older = list.filter(x => x.status !== 'running');
+  return panel(null,
+    h('div', { class: 'row between' }, h('div', {}, h('span', { class: 'kicker', text: t('inv_kicker') }), h('h2', { text: t('inv_title') })), startBtn),
+    h('p', { class: 'small muted', text: t('inv_sub') }),
+    !ready ? h('p', { class: 'notice', text: t('inv_status_' + d.investigator) }) : null,
+    running ? h('p', { class: 'banner', text: t('inv_running') }) : null,
+    older.length > 1 ? h('div', { class: 'row' }, h('span', { class: 'small muted', text: t('inv_history') }),
+      ...older.map(x => h('button', { class: 'ghost small', text: `#${x.id} · ${fmtDate(x.started_at)}`, onclick: () => show(x) }))) : null,
+    shown);
+}
+
+function investigationView(inv) {
+  const r = inv.report ?? {};
+  const meta = t('inv_meta', { when: fmtDate(inv.finished_at ?? inv.started_at), trigger: t('trig_' + inv.trigger), model: inv.model,
+    calls: inv.tool_calls.filter(x => x.tool !== 'submit_findings').length, usd: inv.usage?.usd ?? '—' });
+  const chips = ids => h('span', { class: 'chips' }, ...ids.map(e => h('span', { class: 'chip', text: e })));
+  // A removed claim also empties its finding; list the claim once, and the finding only if nothing else explains it.
+  const removed = (r.unsupported ?? []).filter(u => u.reason !== 'FINDING_WITHOUT_EVIDENCE' || !(r.unsupported ?? []).some(o => o !== u && o.finding === u.finding));
+  return h('div', { class: 'stack inv' },
+    h('div', { class: 'row' }, badge(inv.status, 'ist_'), h('span', { class: 'small muted', text: meta })),
+    inv.model === 'demo-replay' ? h('p', { class: 'notice warn', text: t('inv_demo_note') }) : h('p', { class: 'small muted', text: t('inv_ai_note') }),
+    inv.error ? h('p', { class: 'notice bad', text: has('inv_err_' + inv.error) ? t('inv_err_' + inv.error) : inv.error }) : null,
+    r.summary ? h('p', { class: 'lead', text: r.summary }) : null,
+    ...(r.findings ?? []).map(f => h('div', { class: 'find' },
+      h('div', { class: 'head' }, h('b', { text: f.title }), h('span', { class: 'tag conf-' + f.confidence, text: t('conf_' + f.confidence) })),
+      h('dl', { class: 'oiv' },
+        h('dt', { class: 'o', text: t('observed') }), h('dd', {}, h('ul', { class: 'obs' }, ...f.observed.map(o => h('li', {}, o.statement, ' ', chips(o.evidence))))),
+        h('dt', { class: 'i', text: t('inferred') }), h('dd', { text: f.inferred }),
+        h('dt', { class: 'c', text: t('counter') }), h('dd', { text: f.counter_evidence }),
+        h('dt', { class: 'v', text: t('verify') }), h('dd', { text: f.to_verify })))),
+    r.handoffs?.length ? h('div', { class: 'stack' }, h('h3', { text: t('handoffs_title') }),
+      h('div', { class: 'tablewrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', { text: 'Deal' }), h('th', { text: t('crm_says') }), h('th', { text: t('convo_says') }))),
+        h('tbody', {}, ...r.handoffs.map(x => h('tr', {}, h('td', { class: 'mono nowrap', text: x.deal_ref }), h('td', { class: 'nowrap', text: x.crm_reason }), h('td', {}, x.conversation_signal, ' ', chips(x.evidence)))))))) : null,
+    r.next_run?.length ? h('div', { class: 'stack' }, h('h3', { text: t('next_run') }),
+      ...r.next_run.map(n => h('dl', { class: 'kv nextrun' }, h('dt', { text: t('hypothesis') }), h('dd', { text: n.hypothesis }), h('dt', { text: t('change') }), h('dd', { text: n.change }), h('dt', { text: t('measure') }), h('dd', { text: n.measure })))) : null,
+    removed.length ? h('details', { class: 'more' }, h('summary', { text: t('unsupported_title', { n: removed.length }) }),
+      h('ul', { class: 'passes removed' }, ...removed.map(u => h('li', { text: `${u.finding}${u.statement ? ': “' + u.statement + '”' : ''} (${t('why_' + u.reason)}${u.cited?.length ? ': ' + u.cited.join(', ') : ''})` })))) : null,
+    inv.tool_calls.length ? h('details', { class: 'more' }, h('summary', { text: t('trace', { n: inv.tool_calls.length }) }),
+      h('ol', { class: 'trace' }, ...inv.tool_calls.map(c => h('li', { class: 'mono small' }, c.tool, c.input && Object.keys(c.input).length ? ' ' + JSON.stringify(c.input) : '', c.tool !== 'submit_findings' ? ` → ${c.ids} ${t('evidence_items')}` : '')))) : null);
 }
 
 function configPanel(d, reload) {

@@ -12,7 +12,12 @@ export const DEFAULTS = Object.freeze({
   // How a pause reaches the ad platform. "manual": ANTERA records it and creates a task.
   // "webhook": POST to adapter.url (e.g. an n8n workflow that calls the Ads API). "demo": simulated.
   adapter: { type: 'manual', url: '' },
-  notify: { webhookUrl: '' }
+  notify: { webhookUrl: '' },
+  // Conversations (call notes, transcripts) are deleted after this many days.
+  privacy: { transcriptDays: 90 },
+  // Level 2: the read-only AI investigator. Needs the optional @anthropic-ai/sdk package and an API key.
+  // `auto`: start an investigation by itself when a live campaign is paused or unclear (at most once a day each).
+  investigator: { enabled: true, model: 'claude-opus-5-5', effort: 'high', maxTurns: 12, auto: false }
 });
 
 function merge(base, extra) {
@@ -46,11 +51,14 @@ export function loadConfig(path, overrides = {}) {
   if (cfg.adapter.type === 'webhook' && !isHttpUrl(cfg.adapter.url)) p.push('adapter.url must be an http(s) URL when adapter.type is "webhook"');
   if (cfg.notify.webhookUrl && !isHttpUrl(cfg.notify.webhookUrl)) p.push('notify.webhookUrl must be an http(s) URL');
   if (!(Number(cfg.scheduler.recheckMinutes) >= 0)) p.push('scheduler.recheckMinutes must be 0 (off) or more');
+  if (!(Number(cfg.privacy.transcriptDays) >= 1)) p.push('privacy.transcriptDays must be 1 or more');
+  if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(cfg.investigator.effort)) p.push('investigator.effort must be low, medium, high, xhigh or max');
+  if (!(Number.isInteger(cfg.investigator.maxTurns) && cfg.investigator.maxTurns >= 2 && cfg.investigator.maxTurns <= 40)) p.push('investigator.maxTurns must be an integer from 2 to 40');
   if (p.length) throw new Error('Invalid configuration:\n  - ' + p.join('\n  - '));
   return { ...cfg, file: file && existsSync(file) ? file : null };
 }
 
 /** The part of the configuration the browser may see (no webhook URLs). */
 export function publicConfig(cfg) {
-  return { org: cfg.org, language: cfg.language, rules: cfg.rules, adapter: cfg.adapter.type };
+  return { org: cfg.org, language: cfg.language, rules: cfg.rules, adapter: cfg.adapter.type, privacy: cfg.privacy };
 }

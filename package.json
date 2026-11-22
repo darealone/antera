@@ -1,19 +1,46 @@
 {
   "name": "antera",
-  "version": "0.1.0",
-  "description": "Decision assurance for marketing and sales. Level 1: checks the chain from click to deal before launch and daily after, pauses spend when it breaks. May stop, never start.",
+  "version": "0.2.0",
+  "description": "Decision assurance for marketing and sales. Level 1 checks the chain from click to deal and pauses spend when it breaks; Level 2 investigates lost deals read-only, with every claim checked against evidence. May stop, never start.",
   "type": "module",
   "license": "Apache-2.0",
   "homepage": "https://darealone.github.io/aether-hive/antera/",
-  "repository": { "type": "git", "url": "git+https://github.com/darealone/antera.git" },
-  "bin": { "antera": "bin/antera.js" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/darealone/antera.git"
+  },
+  "bin": {
+    "antera": "bin/antera.js"
+  },
   "main": "src/server.js",
-  "files": ["bin", "src", "public", "examples", "README.md", "LICENSE", "NOTICE"],
-  "engines": { "node": ">=22.13.0" },
+  "files": [
+    "bin",
+    "src",
+    "public",
+    "examples",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "start": "node bin/antera.js serve",
     "dev": "node bin/antera.js serve --demo",
     "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.js\""
   },
-  "keywords": ["marketing", "sales", "campaign", "crm", "governance", "agentic", "human-in-the-loop", "self-hosted"]
+  "keywords": [
+    "marketing",
+    "sales",
+    "campaign",
+    "crm",
+    "governance",
+    "agentic",
+    "human-in-the-loop",
+    "self-hosted"
+  ],
+  "optionalDependencies": {
+    "@anthropic-ai/sdk": "^1.12.0"
+  }
 }

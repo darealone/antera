@@ -22,6 +22,9 @@ function recordFields(goal, i, { drop = null } = {}) {
   const f = { country: ['DE', 'AT', 'CH'][i % 3], lead_score: 60 + (i % 30) };
   for (const c of goal?.criteria ?? []) f[c.field] = sample(c, i);
   if (drop) delete f[drop];
+  // Realistic qualification: about one lead in three becomes an SQL. Monitoring checks that the field
+  // arrives, not its value, so this does not affect Level 1.
+  if ('lifecycle_stage' in f && i % 3 !== 0) f.lifecycle_stage = 'mql';
   return f;
 }
 
@@ -123,5 +126,108 @@ export async function seedDemo(svc, db, { clock = () => Date.now() } = {}) {
   await svc.ingest(as(kim), { events: [{ kind: 'spend', campaign: brand.campaign.id, amount: 180, at: now - 2 * H, source: 'demo-ads' }] });
   await svc.runChecks(as(kim), brand.campaign.id);
 
+  // Level 2 history: earlier runs with deals and consented call notes (older than the monitoring window).
+  await svc.ingest(as(kim), { events: dealHistory(paper.campaign.id, now, PAPER_DEALS) });
+  await svc.ingest(as(kim), { events: dealHistory(brand.campaign.id, now, BRAND_DEALS) });
+  await replayInvestigation(svc, db, paper.campaign.id, { clock });
+
   return { admin, sam, kim };
+}
+
+// ---------- Level 2 demo data ----------
+const DAY = 24 * H;
+const OK_FIELDS = { consent: true, company_size: '250-999', lifecycle_stage: 'sql', lead_score: 74 };
+
+// [ref, final stage, CRM loss reason, amount, call note or null]. Fictitious companies and people.
+const PAPER_DEALS = [
+  ['D-1001', 'won', null, 38000, null],
+  ['D-1002', 'lost', 'no budget', 24000, 'Champion (Head of Sales Ops) likes the pilot. Next step: the Betriebsrat has to approve because the tool tracks activity per rep. She will raise it at the works council meeting in March.'],
+  ['D-1003', 'lost', 'no budget', 31000, 'IT security review requested a data processing agreement and a DPIA. Our champion asked whether we have a works council FAQ. Procurement paused until the review is done.'],
+  ['D-1004', 'lost', 'no budget', 19000, 'Budget for 2027 was frozen company-wide last week; CFO confirmed no new tools until Q3. Champion wants to restart then.'],
+  ['D-1005', 'lost', 'no budget', 27000, 'Datenschutzbeauftragter und Betriebsrat sehen Leistungskontrolle kritisch. Champion fragt nach Argumenten für die Mitbestimmungsrunde.'],
+  ['D-1006', 'lost', 'timing', 22000, null],
+  ['D-1007', 'proposal', null, 29000, null],
+  ['D-1008', null, null, 0, null], ['D-1009', null, null, 0, null], ['D-1010', null, null, 0, null]
+];
+const BRAND_DEALS = [
+  ['B-2001', 'won', null, 21000, null], ['B-2002', 'won', null, 17000, null], ['B-2003', 'lost', 'competitor', 15000, null],
+  ['B-2004', null, null, 0, null], ['B-2005', null, null, 0, null], ['B-2006', null, null, 0, null], ['B-2007', null, null, 0, null]
+];
+
+function dealHistory(campaignId, now, rows) {
+  const ev = [];
+  rows.forEach(([ref, stage, reason, amount, note], i) => {
+    const t0 = now - (40 - i) * DAY;
+    ev.push({ kind: 'form_submit', campaign: campaignId, ref, at: t0, source: 'demo-history' });
+    ev.push({ kind: 'crm_record', campaign: campaignId, ref, at: t0 + 3 * MIN, source: 'demo-history', fields: stage ? OK_FIELDS : { ...OK_FIELDS, lifecycle_stage: 'mql' } });
+    if (!stage) return;
+    ev.push({ kind: 'deal', campaign: campaignId, ref, amount, at: t0 + 6 * DAY, source: 'demo-crm', fields: { deal_stage: 'proposal' } });
+    if (note) ev.push({ kind: 'conversation', campaign: campaignId, ref, consent: true, at: t0 + 12 * DAY, source: 'demo-calls', text: note });
+    if (stage !== 'proposal') ev.push({ kind: 'deal', campaign: campaignId, ref, at: t0 + 18 * DAY, source: 'demo-crm', fields: { deal_stage: stage, ...(reason ? { loss_reason: reason } : {}) } });
+  });
+  ev.push({ kind: 'spend', campaign: campaignId, amount: rows.length * 310, at: now - 30 * DAY, source: 'demo-history' });
+  return ev;
+}
+
+/**
+ * A scripted investigation: it calls the real read-only tools and goes through the real evidence check,
+ * but the "model" is this script, not Claude. It shows the format without an API key, and it includes one
+ * invented claim on purpose so the demo shows the check removing it. Stored with model "demo-replay".
+ */
+async function replayInvestigation(svc, db, campaignId, { clock }) {
+  const { investigate } = await import('./investigator.js');
+  const campaign = { ...db.get('SELECT * FROM campaigns WHERE id = ?', campaignId) };
+  const result = (params, id) => {
+    for (const m of params.messages) if (Array.isArray(m.content)) for (const b of m.content) if (b.tool_use_id === id) return JSON.parse(b.content);
+  };
+  const use = (id, name, input = {}) => ({ type: 'tool_use', id, name, input });
+  const turn = content => ({ content, stop_reason: 'tool_use', usage: {}, model: 'demo-replay' });
+  const steps = [
+    () => turn([use('a', 'check_launch_chain'), use('b', 'get_campaign_funnel'), use('c', 'get_reference_pattern')]),
+    () => turn([use('d', 'get_loss_reasons')]),
+    () => turn([use('e', 'search_transcripts', { query: 'betriebsrat works council datenschutz security budget', deal_ref: '' })]),
+    p => {
+      const funnel = result(p, 'b'), lost = result(p, 'd'), hits = result(p, 'e').matches;
+      const ref = [...result(p, 'c').campaigns].sort((x, y) => y.opportunities - x.opportunities)[0]; // the comparable one with most deals
+      const approval = hits.filter(h => /betriebsrat|works council|datenschutz|security/i.test(h.snippet));
+      const noBudget = lost.deals.filter(d => d.crm_loss_reason === 'no budget');
+      const pct = x => (x == null ? '—' : Math.round(x * 100) + ' %');
+      return turn([use('f', 'submit_findings', {
+        summary: `Leads reached the CRM complete, but deals were lost late: ${funnel.lost} of ${funnel.opportunities} opportunities lost, ${noBudget.length} of them recorded as "no budget". For ${approval.length} of those, the call notes point to the works council or an IT/data-protection review instead. Up to the SQL stage this run performs like the reference campaign.`,
+        findings: [
+          { title: '"No budget" hides an internal approval problem',
+            observed: [
+              { statement: `${noBudget.length} of ${lost.lost_deals} lost deals carry the CRM loss reason "no budget".`, evidence: noBudget.map(d => d.id) },
+              { statement: `Call notes for ${approval.length} of these deals mention the works council (Betriebsrat), IT security or the data protection officer.`, evidence: approval.map(h => h.id) }],
+            inferred: 'For most of these deals the blocker was internal approval (co-determination, IT and data protection), not money. The CRM records the visible symptom, not the cause.',
+            confidence: 'medium',
+            counter_evidence: 'One "no budget" call (D-1004) describes a real company-wide budget freeze. The pattern rests on three conversations, and deals without notes cannot be judged.',
+            to_verify: 'Ask the champions of D-1002, D-1003 and D-1005 what stopped the deal. Check whether the CRM offers "internal approval" as a loss reason.' },
+          { title: 'The top of the funnel is not the leak',
+            observed: [{ statement: `Submission-to-SQL rate ${pct(funnel.rates.submission_to_goal)} here vs ${pct(ref.rates.submission_to_goal)} in "${ref.name}"; opportunity-to-won ${pct(funnel.rates.opportunity_to_won)} vs ${pct(ref.rates.opportunity_to_won)}.`, evidence: ['FUNNEL', ref.id] }],
+            inferred: 'More traffic or budget would not fix this run. The loss happens after the proposal.',
+            confidence: 'medium',
+            counter_evidence: 'The reference campaign is a different channel with few deals; the comparison is indicative, not proof.',
+            to_verify: 'Compare again after the next run.' },
+          { title: 'Competitor pricing (invented on purpose for the demo)',
+            observed: [{ statement: 'A competitor undercut our price in every lost deal.', evidence: ['E0'] }],
+            inferred: 'This claim cites evidence that was never returned, so the check removes it.', confidence: 'high', counter_evidence: '—', to_verify: '—' }
+        ],
+        handoffs: approval.filter(h => noBudget.some(d => d.deal_ref === h.deal_ref)).map(h => ({
+          deal_ref: h.deal_ref, crm_reason: 'no budget', conversation_signal: h.snippet.replace(/…/g, '').slice(0, 220), evidence: [h.id] })),
+        next_run: [{
+          hypothesis: 'Deals stall at internal approval (works council, data protection), not at budget.',
+          change: 'Send a works council and data protection pack with every proposal, and add "internal approval" as a CRM loss reason.',
+          measure: 'Share of proposals that reach negotiation; share of losses recorded as "no budget".' }]
+      })]);
+    }
+  ];
+  const client = { beta: { messages: { create: async params => steps.shift()(params) } } };
+  const now = clock();
+  const out = await investigate({ client, db, campaign, definitions: svc.activeDefinitions(), settings: {}, model: 'demo-replay', maxTurns: 6 });
+  const report = { ...out.report, unsupported: out.unsupported, servedBy: 'demo-replay' };
+  const invId = Number(db.run("INSERT INTO investigations (campaign_id, status, trigger, requested_by, model, started_at, finished_at, report, tool_calls, usage) VALUES (?, ?, 'demo', NULL, 'demo-replay', ?, ?, ?, ?, ?)",
+    campaignId, out.status, now - 2 * MIN, now, JSON.stringify(report), JSON.stringify(out.toolCalls), JSON.stringify({ requests: out.usage.requests, usd: 0 })).lastInsertRowid);
+  db.audit('investigation.finished', { campaignId, data: { investigationId: invId, status: out.status, trigger: 'demo', findings: report.findings?.length ?? 0, unsupported: report.unsupported?.length ?? 0, handoffs: report.handoffs?.length ?? 0 }, at: now });
+  if (report.handoffs?.length) db.run("INSERT INTO tasks (campaign_id, owner_id, code, cause, created_at) VALUES (?, ?, 'TASK_HANDOFF_L3', ?, ?)", campaignId, campaign.owner_id, JSON.stringify({ investigation: invId, deals: report.handoffs.length }), now);
 }

@@ -1,7 +1,9 @@
 FROM node:22.16-alpine
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=8080 ANTERA_DATA=/data/antera.db
 WORKDIR /app
-COPY package.json ./
+COPY package.json package-lock.json ./
+# Installs only the optional Anthropic SDK (for the Level 2 investigator); ANTERA itself has no dependencies.
+RUN npm ci --omit=dev && npm cache clean --force
 COPY bin ./bin
 COPY src ./src
 COPY public ./public

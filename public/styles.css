@@ -96,3 +96,22 @@ table{width:100%;border-collapse:collapse;font-size:13px}td{overflow-wrap:anywhe
 .banner{border:1px solid var(--accent);background:color-mix(in srgb,var(--accent) 7%,transparent);border-radius:12px;padding:10px 14px;font-size:13px}
 .hero{margin:14px 0}
 @media(max-width:600px){.cn{flex:1 0 46px;padding:0 1px}.cn .lbl{font-size:9.5px}.dot{width:26px;height:26px;font-size:11px}.cn:not(:last-child):after{top:13px;left:calc(50% + 14px);right:calc(-50% + 14px)}}
+
+/* ---------- Level 2: investigation ---------- */
+.inv .lead{font-size:15px;line-height:1.55;margin:0}
+.chips{display:inline-flex;flex-wrap:wrap;gap:4px;vertical-align:middle}
+.chip{font:10.5px var(--mono);border:1px solid var(--line2);border-radius:6px;padding:0 5px;color:var(--info)}
+.obs{margin:0;padding-left:16px;display:grid;gap:4px}
+.oiv dt.c{color:var(--block)}
+.tag.conf-high{color:var(--go);border-color:color-mix(in srgb,var(--go) 45%,transparent)}
+.tag.conf-medium{color:var(--review);border-color:color-mix(in srgb,var(--review) 45%,transparent)}
+.tag.conf-low{color:var(--muted)}
+.s-done{color:var(--go);border-color:color-mix(in srgb,var(--go) 50%,transparent);background:color-mix(in srgb,var(--go) 9%,transparent)}
+.s-running{color:var(--info);border-color:color-mix(in srgb,var(--info) 50%,transparent)}
+.s-failed,.s-refused{color:var(--block);border-color:color-mix(in srgb,var(--block) 50%,transparent)}
+.removed li:before{content:"✕ ";color:var(--block)}
+.trace{margin:6px 0 0;padding-left:20px;display:grid;gap:3px;color:var(--muted)}
+.nextrun{border-left:2px solid var(--accent);padding-left:10px}
+.notice.warn{border-color:var(--review)}
+.nowrap{white-space:nowrap}
+.nextrun dd{font:13.5px/1.5 var(--sans)}

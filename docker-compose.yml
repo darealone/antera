@@ -7,6 +7,8 @@ services:
       ANTERA_CONFIG: /config/antera.config.json
       # Set to 1 when ANTERA is served over HTTPS (behind a reverse proxy):
       ANTERA_SECURE_COOKIES: "0"
+      # Enables the Level 2 investigator. Put the key in a .env file next to this one, never in the compose file.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - antera-data:/data
       - ./antera.config.json:/config/antera.config.json:ro

@@ -31,7 +31,7 @@ Create an API token in ANTERA under **Settings → API tokens**. In n8n, add an 
 
 | Field | Meaning |
 |---|---|
-| `kind` | `form_submit`, `crm_record`, `spend` or `deal` |
+| `kind` | `form_submit`, `crm_record`, `spend`, `deal` or `conversation` |
 | `campaign` or `utm_campaign` | ANTERA campaign id, or its attribution key |
 | `email` or `ref` | Links the form submission to its CRM record. Emails are hashed on arrival and never stored. |
 | `test` | `true` for test leads (used for the launch check, ignored by live monitoring) |
@@ -39,6 +39,20 @@ Create an API token in ANTERA under **Settings → API tokens**. In n8n, add an 
 | `amount` | For `spend` and `deal` events |
 | `at` | ISO time or epoch ms. Defaults to "now". |
 | `recheck` | `true` re-runs the chain for affected campaigns right away |
+| `text`, `consent` | For `conversation` only: call notes or a transcript (max 20,000 characters). Accepted only with `consent: true`. Emails, phone numbers and IBANs are scrubbed, and the note expires after 90 days. |
+
+Deals and call notes (used by the Level 2 investigator):
+
+```json
+{ "events": [
+  { "kind": "deal", "utm_campaign": "webinar-ai-sales", "ref": "{{ $json.deal_id }}", "amount": 24000,
+    "fields": { "deal_stage": "lost", "loss_reason": "{{ $json.closed_lost_reason }}" } },
+  { "kind": "conversation", "utm_campaign": "webinar-ai-sales", "ref": "{{ $json.deal_id }}", "consent": true,
+    "text": "{{ $json.call_summary }}" }
+] }
+```
+
+Use the same `ref` for a lead's form submission, CRM record, deal and calls, so the investigator can follow one deal from click to close.
 
 Typical workflows:
 

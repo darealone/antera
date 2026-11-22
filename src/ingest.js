@@ -3,7 +3,23 @@
 // Pure functions: the caller passes the salt, the campaign lookup and the clock.
 import { createHash } from 'node:crypto';
 
-export const KINDS = Object.freeze(['form_submit', 'crm_record', 'spend', 'deal']);
+export const KINDS = Object.freeze(['form_submit', 'crm_record', 'spend', 'deal', 'conversation']);
+export const MAX_TEXT = 20_000;
+
+/**
+ * Removes what can be detected reliably: email addresses, phone numbers, IBANs and card-like numbers.
+ * Names in free text are NOT reliably detectable; connectors should send pseudonymised transcripts.
+ */
+export function scrubText(text) {
+  return String(text)
+    .replace(/[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi, '[email]')
+    .replace(/\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,3})?\b/g, '[iban]')
+    // A full stop only belongs to the number when a digit follows (1.2.3.4), not at the end of a sentence.
+    .replace(/(?<![\w.])\+?\d[\d ()\/.-]{6,}\d(?!\w|\.\d)/g, m =>
+      (DATE_RE.test(m.trim()) || m.replace(/\D/g, '').length < 7 ? m : '[number]'));
+}
+// Dates are evidence, not identifiers: 2026-11-22, 22.11.2026, 22/11/2026.
+const DATE_RE = /^(\d{4}-\d{2}-\d{2}|\d{1,2}[./]\d{1,2}[./]\d{2,4})$/;
 export const MAX_EVENTS = 1000;
 
 /** Direct identifiers that are never stored, whatever a connector sends. */
@@ -66,7 +82,15 @@ export function prepareEvents(events, { salt, now, resolveCampaign }) {
 
     const amount = e.kind === 'spend' || e.kind === 'deal' ? Number(e.amount ?? 0) : 0;
     if (!Number.isFinite(amount) || amount < 0) return rejected.push({ index, error: 'INVALID_AMOUNT' });
-    accepted.push({ campaign_id: campaignId, kind: e.kind, ref, is_test: e.test ? 1 : 0, fields: cleanFields(e.fields, dropped), amount, at, source: String(e.source ?? '').slice(0, 40) });
+    // Conversations (call notes, transcripts) only with recorded consent, scrubbed, and with an expiry date.
+    let body = null;
+    if (e.kind === 'conversation') {
+      if (e.consent !== true) return rejected.push({ index, error: 'CONSENT_REQUIRED' });
+      if (typeof e.text !== 'string' || !e.text.trim()) return rejected.push({ index, error: 'TEXT_REQUIRED' });
+      if (e.text.length > MAX_TEXT) return rejected.push({ index, error: 'TEXT_TOO_LONG' });
+      body = scrubText(e.text.trim());
+    }
+    accepted.push({ campaign_id: campaignId, kind: e.kind, ref, is_test: e.test ? 1 : 0, fields: cleanFields(e.fields, dropped), amount, at, source: String(e.source ?? '').slice(0, 40), body });
   });
   return { accepted, rejected, dropped: [...dropped].sort() };
 }

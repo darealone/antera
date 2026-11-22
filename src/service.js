@@ -7,6 +7,7 @@ import { validateCriteria, KEY_RE } from './definitions.js';
 import { prepareEvents } from './ingest.js';
 import { createAdapter, createNotifier } from './adapters.js';
 import { hashPassword, verifyPassword, strip, can, newToken, sha } from './auth.js';
+import { investigate, INVESTIGATOR_VERSION } from './investigator.js';
 
 export class HttpError extends Error {
   constructor(status, code, detail) { super(code); this.status = status; this.code = code; this.detail = detail; }
@@ -20,7 +21,7 @@ const parse = (s, fallback) => { try { return JSON.parse(s); } catch { return fa
 const FIELD_RE = /^[a-z][a-z0-9_]{0,40}$/;
 const HOUR = 3600_000;
 
-export function createService(db, config, { clock = () => Date.now(), fetch: fetchImpl, log = console } = {}) {
+export function createService(db, config, { clock = () => Date.now(), fetch: fetchImpl, log = console, anthropic = null } = {}) {
   const settings = () => config.rules;
   const adapter = createAdapter(config, { fetch: fetchImpl });
   const notify = createNotifier(config, { fetch: fetchImpl, log });
@@ -240,6 +241,8 @@ export function createService(db, config, { clock = () => Date.now(), fetch: fet
         .map(i => ({ ...i, cause: parse(i.cause, {}), adapter: parse(i.adapter, {}), actor_name: users.get(i.actor_id) ?? null })),
       tasks: db.all('SELECT * FROM tasks WHERE campaign_id = ? ORDER BY done_at IS NOT NULL, id DESC LIMIT 50', id).map(t => ({ ...t, cause: parse(t.cause, {}) })),
       definitions: Object.fromEntries([...activeDefinitions()].filter(([k]) => k === c.goal_key || k === settings().opportunityKey)),
+      investigations: listInvestigations(actor, id),
+      investigator: investigatorStatus(),
       rulesVersion: RULES_VERSION, controllerVersion: CONTROLLER_VERSION
     };
   }
@@ -312,6 +315,7 @@ export function createService(db, config, { clock = () => Date.now(), fetch: fet
     const launch = launchCheck({ campaign: c, definitions: defs, test: testEvidence(id), now, settings: s });
     // Health describes a running campaign; a draft only has a launch status.
     let decision = { health: '', rule: null, actions: [] };
+    const newTasks = [];
     db.tx(() => {
       storeRun(id, 'launch', launch.results, now);
       if (c.state === 'live') {
@@ -323,7 +327,7 @@ export function createService(db, config, { clock = () => Date.now(), fetch: fet
       }
       db.run('UPDATE campaigns SET launch_status = ?, fingerprint = ?, health = ?, checked_at = ? WHERE id = ?', launch.status, launch.fingerprint, decision.health, now, id);
       db.audit('checks.run', { actorId: actor?.id ?? null, campaignId: id, data: { state: c.state, launch: launch.status, health: decision.health, rule: decision.rule, by: actor ? 'human' : 'system' }, at: now });
-      for (const a of decision.actions) if (a.type === 'task') openTask(c, a.code, a.rule, a.cause, now);
+      for (const a of decision.actions) if (a.type === 'task' && openTask(c, a.code, a.rule, a.cause, now)) newTasks.push(a.code);
     });
     // The controller is handed exactly one capability: pause.
     let pausedNow = false;
@@ -331,12 +335,15 @@ export function createService(db, config, { clock = () => Date.now(), fetch: fet
       if (a.type === 'pause') { await applyPause(c, { byKind: 'system', rule: a.rule, cause: a.cause }); pausedNow = true; }
       if (a.type === 'notify') await notify({ event: a.event, rule: a.rule, cause: a.cause, campaign: { id: c.id, name: c.name, channel: c.channel }, at: new Date(now).toISOString() });
     }
+    // Level 2 may investigate by itself when something just broke or became unclear (opt-in, at most daily).
+    if (newTasks.some(code => code === 'TASK_PAUSED' || code === 'TASK_INVESTIGATE')) autoInvestigate(id);
     // Once paused, the launch status must reflect the paused state (which needs post-pause proof), not the live one.
     if (pausedNow) return runChecks(actor, id);
     return getCampaign(actor ?? { id: 0 }, id);
   }
 
   async function recheckAll() {
+    purgeExpired();
     const ids = db.all("SELECT id FROM campaigns WHERE state IN ('draft','live','paused')").map(r => r.id);
     const out = [];
     for (const id of ids) {
@@ -409,8 +416,9 @@ export function createService(db, config, { clock = () => Date.now(), fetch: fet
     const { accepted, rejected, dropped } = prepareEvents(events, { salt: db.meta.get('pseudonym_salt'), now, resolveCampaign });
     db.tx(() => {
       for (const e of accepted) {
-        db.run('INSERT INTO events (campaign_id, kind, ref, is_test, fields, amount, at, received_at, source) VALUES (?,?,?,?,?,?,?,?,?)',
-          e.campaign_id, e.kind, e.ref, e.is_test, JSON.stringify(e.fields), e.amount, e.at, now, e.source);
+        const expires = e.kind === 'conversation' ? now + config.privacy.transcriptDays * 864e5 : null;
+        db.run('INSERT INTO events (campaign_id, kind, ref, is_test, fields, amount, at, received_at, source, body, expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+          e.campaign_id, e.kind, e.ref, e.is_test, JSON.stringify(e.fields), e.amount, e.at, now, e.source, e.body, expires);
       }
       const byKind = accepted.reduce((m, e) => ({ ...m, [e.kind]: (m[e.kind] ?? 0) + 1 }), {});
       db.audit('evidence.ingested', { actorId: actor.id, data: { accepted: byKind, rejected: rejected.length, dropped, via: actor.via }, at: now });
@@ -447,11 +455,114 @@ export function createService(db, config, { clock = () => Date.now(), fetch: fet
     return { entries: rows.map(r => ({ ...r, data: parse(r.data, {}) })), integrity: db.verifyAudit() };
   }
 
+  // ---------- Level 2: the read-only investigator ----------
+
+  // The Anthropic SDK is optional. `prepare()` tries to load it once; Level 1 works without it.
+  let sdk;
+  let client = anthropic;
+  async function prepare() {
+    if (client || sdk !== undefined) return investigatorStatus();
+    try { sdk = (await import('@anthropic-ai/sdk')).default; } catch { sdk = null; }
+    return investigatorStatus();
+  }
+  function investigatorStatus() {
+    if (!config.investigator.enabled) return 'disabled';
+    if (client) return 'ready';
+    if (sdk === undefined) return 'unknown';
+    if (sdk === null) return 'no_sdk';
+    // The SDK reads ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile.
+    if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN && !process.env.ANTHROPIC_PROFILE) return 'no_key';
+    return 'ready';
+  }
+  function getClient() {
+    if (!client) client = new sdk();
+    return client;
+  }
+
+  /** Conversations past their expiry date are deleted, not just hidden. */
+  function purgeExpired() {
+    const now = clock();
+    const { changes } = db.run("DELETE FROM events WHERE kind = 'conversation' AND expires_at IS NOT NULL AND expires_at < ?", now);
+    if (changes) db.audit('privacy.purged', { data: { conversations: Number(changes) }, at: now });
+    return Number(changes);
+  }
+
+  const invRow = r => r && { ...r, report: parse(r.report, {}), tool_calls: parse(r.tool_calls, []), usage: parse(r.usage, {}) };
+
+  function listInvestigations(actor, campaignId) {
+    if (!actor) deny();
+    return db.all('SELECT * FROM investigations WHERE campaign_id = ? ORDER BY id DESC LIMIT 20', campaignId).map(invRow);
+  }
+
+  function getInvestigation(actor, id) {
+    if (!actor) deny();
+    return invRow(db.get('SELECT * FROM investigations WHERE id = ?', id)) ?? notFound();
+  }
+
+  function errorCode(e) {
+    if (sdk && e instanceof sdk.AuthenticationError) return 'AUTH';
+    if (sdk && e instanceof sdk.PermissionDeniedError) return 'PERMISSION';
+    if (sdk && e instanceof sdk.RateLimitError) return 'RATE_LIMIT';
+    if (sdk && e instanceof sdk.APIConnectionError) return 'CONNECTION';
+    if (sdk && e instanceof sdk.APIError) return 'API_' + (e.status ?? 'ERROR');
+    return 'INTERNAL';
+  }
+
+  /**
+   * Start a read-only investigation. Returns at once with the record; the work runs in the background.
+   * Pass { wait: true } to wait for the result (CLI, tests).
+   */
+  async function startInvestigation(actor, id, { trigger = 'human', wait = false } = {}) {
+    if (trigger === 'human' && !actor) deny();
+    const status = investigatorStatus();
+    if (status !== 'ready') throw new HttpError(409, 'INVESTIGATOR_UNAVAILABLE', status);
+    const c = getCamp(id);
+    if (db.get("SELECT 1 AS x FROM investigations WHERE campaign_id = ? AND status = 'running'", id)) throw new HttpError(409, 'ALREADY_RUNNING');
+    purgeExpired();
+    const now = clock();
+    const { model, effort, maxTurns } = config.investigator;
+    const invId = Number(db.run("INSERT INTO investigations (campaign_id, status, trigger, requested_by, model, started_at) VALUES (?, 'running', ?, ?, ?, ?)",
+      id, trigger, actor?.id ?? null, model, now).lastInsertRowid);
+    db.audit('investigation.started', { actorId: actor?.id ?? null, campaignId: id, data: { investigationId: invId, trigger, model, version: INVESTIGATOR_VERSION }, at: now });
+
+    const work = (async () => {
+      let out;
+      try {
+        out = await investigate({ client: getClient(), db, campaign: c, definitions: activeDefinitions(), settings: settings(), language: config.language, model, effort, maxTurns });
+      } catch (e) {
+        log.error?.(`Investigation ${invId} failed: ${e.message}`);
+        out = { status: 'failed', error: errorCode(e), toolCalls: [], usage: {} };
+      }
+      const end = clock();
+      const report = out.report ? { ...out.report, unsupported: out.unsupported ?? [], servedBy: out.servedBy ?? null } : {};
+      db.tx(() => {
+        db.run('UPDATE investigations SET status = ?, finished_at = ?, report = ?, tool_calls = ?, usage = ?, error = ? WHERE id = ?',
+          out.status, end, JSON.stringify(report), JSON.stringify(out.toolCalls ?? []), JSON.stringify(out.usage ?? {}), out.error ?? null, invId);
+        db.audit('investigation.finished', { campaignId: id, data: { investigationId: invId, status: out.status, error: out.error ?? null,
+          findings: report.findings?.length ?? 0, unsupported: report.unsupported?.length ?? 0, handoffs: report.handoffs?.length ?? 0, usd: out.usage?.usd ?? null }, at: end });
+        // Level 2 hands contradictions between CRM and conversations to Level 3 (decision portability).
+        if (report.handoffs?.length) openTask(c, 'TASK_HANDOFF_L3', null, { investigation: invId, deals: report.handoffs.length }, end);
+      });
+      if (out.status === 'done') await notify({ event: 'investigation.done', campaign: { id: c.id, name: c.name }, investigation: invId, findings: report.findings.length, handoffs: report.handoffs.length, at: new Date(end).toISOString() });
+      return getInvestigation(actor ?? { id: 0 }, invId);
+    })();
+    if (wait) return work;
+    work.catch(e => log.error?.(`Investigation ${invId}: ${e.message}`));
+    return getInvestigation(actor ?? { id: 0 }, invId);
+  }
+
+  function autoInvestigate(id) {
+    if (!config.investigator.auto || investigatorStatus() !== 'ready') return;
+    if (db.get('SELECT 1 AS x FROM investigations WHERE campaign_id = ? AND started_at > ?', id, clock() - 864e5)) return;
+    startInvestigation(null, id, { trigger: 'event' }).catch(e => log.error?.(`Auto-investigation for campaign ${id}: ${e.code ?? e.message}`));
+  }
+
   return {
     needsSetup, createUser, login, listUsers, updateUser, changeOwnPassword, listTokens, createToken, revokeToken,
     activeDefinitions, listDefinitions, createDefinitionVersion,
     createCampaign, updateCampaign, listCampaigns, getCampaign, runChecks, recheckAll,
     pauseCampaign, startCampaign, endCampaign, ingest, listTasks, completeTask, auditLog,
+    prepare, investigatorStatus, startInvestigation, listInvestigations, getInvestigation, purgeExpired,
     adapterType: adapter.type
   };
 }
