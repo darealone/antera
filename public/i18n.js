@@ -1,0 +1,253 @@
+// UI strings. Add a language by copying `en` and translating the values.
+// Findings: o_ = observed, i_ = inferred, v_ = to verify. Pass findings only need o_.
+export const STRINGS = {
+  en: {
+    nav_campaigns: 'Campaigns', nav_definitions: 'Definitions', nav_tasks: 'Tasks', nav_audit: 'Audit log', nav_settings: 'Settings', logout: 'Log out',
+    setup_title: 'Set up {product}', setup_sub: 'Create the first admin account. You can invite your team afterwards.',
+    name: 'Name', email: 'Email', password: 'Password', pw_hint: 'At least 10 characters.', create_admin: 'Create admin account',
+    login_title: 'Log in to {product}', login: 'Log in',
+    demo_banner: 'Demo mode: fictitious team and data. Logins: alex@example.test (admin), sam@example.test (approver), kim@example.test (marketing). Password: demo-password-123',
+    role_admin: 'Admin', role_approver: 'Approver', role_member: 'Marketing',
+    error: 'Something went wrong', saved: 'Saved', create: 'Create', cancel: 'Cancel', save: 'Save', back: '← All campaigns',
+
+    camps_title: 'Campaigns', camps_sub: 'ANTERA checks the chain from click to deal before a campaign starts and every day while it runs. If the chain breaks, it pauses spend. It never starts anything.',
+    new_campaign: 'New campaign', no_campaigns: 'No campaigns yet.', owner: 'Owner', open_tasks: 'open tasks', channel: 'Channel',
+    principle: 'May stop. Never start.',
+    st_draft: 'DRAFT', st_live: 'LIVE', st_paused: 'PAUSED', st_ended: 'ENDED',
+    st_GO: 'GO', st_BLOCKED: 'BLOCKED', st_HEALTHY: 'HEALTHY', st_UNCLEAR: 'UNCLEAR', st_BROKEN: 'BROKEN',
+    spend: 'Spend', spend_running: 'running', spend_paused: 'paused', spend_off: 'off', spend_unknown: 'unknown (check the ad platform)',
+
+    f_name: 'Campaign name', f_channel: 'Channel (e.g. LinkedIn Ads)', f_goal: 'Goal definition', f_attr: 'Attribution key (= utm_campaign)',
+    f_url: 'Landing page URL (with utm_campaign)', f_form: 'Form fields (comma-separated)', f_map: 'CRM mapping (one per line: form_field = crm_field)',
+    f_consent: 'Consent field', f_budget: 'Daily budget', f_map_hint: 'Fields the CRM computes itself ({fields}) need no mapping.',
+
+    head_draft_GO: 'Ready. A named approver may start it.', head_draft_BLOCKED: 'Launch blocked.',
+    head_live_HEALTHY: 'Live. The chain holds.', head_live_UNCLEAR: 'Live. Something needs a look.', head_live_BROKEN: 'Live, but the chain is broken.',
+    head_paused: 'Paused.', head_paused_sys: 'Paused by ANTERA.', head_ended: 'Ended.',
+    expl_draft_GO: 'Every step from click to deal is proven, including a fresh test lead. GO is not a forecast of success.',
+    expl_draft_BLOCKED: 'At least one step from click to deal is not proven to work. Nobody can start it until it is.',
+    expl_live_HEALTHY: 'Configuration and live traffic check out. ANTERA re-checks daily and pauses spend if the chain breaks.',
+    expl_live_UNCLEAR: 'Nothing is observed to be broken, but something could not be verified. That is a hint, not a finding: ANTERA opened an investigation and keeps the campaign running.',
+    expl_paused: 'Spend is paused. Fix the cause, send a test lead, run the checks. A named approver restarts it. ANTERA never restarts by itself.',
+    expl_ended: 'This campaign is closed. Its evidence and audit trail are kept.',
+    cause: 'Cause',
+
+    start: 'Start campaign', restart: 'Restart campaign', pause: 'Pause now', end_c: 'End campaign', run_checks: 'Run checks now',
+    reason: 'Reason (required, goes into the audit log)', confirm: 'Confirm',
+    start_why_not_go: 'Only possible with GO.', start_why_role: 'Only approvers, logged in personally.', start_why_owner: 'Four-eyes rule: the owner cannot start their own campaign.',
+    chain_title: 'Launch chain', chain_sub: 'Click → form → CRM → test lead → goal definition → deal. Every step must have a fresh pass.',
+    stage_click: 'Click', stage_form: 'Form', stage_crm: 'CRM', stage_test: 'Test lead', stage_definition: 'Definition', stage_deal: 'Deal',
+    mon_title: 'Live monitoring', mon_sub: 'Real traffic in the last {h} hours (since going live).',
+    observed: 'Observed', inferred: 'Inferred', verify: 'To verify', passed: 'Checks that passed',
+    checked: 'checked {when}', never_checked: 'not checked yet',
+    evidence: 'Evidence (last {h} h)', ev_subs: 'Form submissions', ev_tests: 'Test leads', ev_records: 'CRM records', ev_spend: 'Spend', ev_deals: 'Deals (all time)',
+    tasks: 'Tasks', no_tasks: 'No open tasks.', done: 'Done', mark_done: 'Mark done',
+    history: 'Interventions', no_history: 'No interventions yet.', by_system: 'ANTERA (rule {rule})', by_human: '{name}',
+    act_start: 'Started', act_restart: 'Restarted', act_pause: 'Paused',
+    config_title: 'Chain configuration', edit: 'Edit',
+    defs_used: 'Definitions in use',
+    demo_title: 'Demo: simulate evidence', demo_sub: 'These buttons send synthetic events through the normal intake (emails get hashed) and then run the checks.',
+    demo_test: 'Send complete test lead', demo_test_broken: 'Send test lead (field lost)', demo_traffic: 'Traffic: healthy', demo_traffic_broken: 'Traffic: CRM drops a field', demo_spend: 'Spend, no leads',
+
+    defs_title: 'Definitions', defs_sub: 'What counts as an MQL, an SQL, an opportunity: versioned, shared by marketing and sales. A change is always a new version; old versions are kept. Campaigns that depend on a changed definition are re-checked immediately.',
+    version: 'Version', active: 'active', new_version: 'New version', key: 'Key (e.g. sql)', label: 'Label', criteria_json: 'Criteria (JSON)', note: 'Why this change?',
+    criteria_help: 'All criteria must hold. Operators: eq, neq, gt, gte, lt, lte, in, exists. Example: [{"field":"company_size","op":"exists"}]',
+    op_eq: '{field} = {value}', op_neq: '{field} ≠ {value}', op_gt: '{field} > {value}', op_gte: '{field} ≥ {value}', op_lt: '{field} < {value}', op_lte: '{field} ≤ {value}', op_in: '{field} is one of {value}', op_exists: '{field} is filled',
+    by_on: 'by {name}, {when}', older: 'Older versions', admin_only: 'Only admins can create a new version.',
+
+    tasks_title: 'Tasks', tasks_sub: 'What ANTERA needs a person for. One open task per campaign and reason, so daily re-checks do not flood anyone.', show_done: 'Show done', show_open: 'Show open',
+    task_TASK_PAUSED: 'ANTERA paused spend: the chain broke. Find and fix the cause.',
+    task_TASK_INVESTIGATE: 'Something could not be verified. Investigate; the campaign keeps running.',
+    task_TASK_RESTART_POSSIBLE: 'The chain checks out again. A named approver may restart the campaign.',
+    task_TASK_PAUSE_MANUALLY: 'Pause the campaign in the ad platform by hand: ANTERA could not reach it.',
+    task_TASK_START_MANUALLY: 'Start the campaign in the ad platform by hand: ANTERA has no connection to it.',
+
+    audit_title: 'Audit log', audit_sub: 'Append-only and hash-chained: every check, pause, start and change, with who or which rule caused it.',
+    audit_ok: 'Hash chain intact.', audit_broken: 'Hash chain broken at entry {id}. The log was modified.',
+    when: 'When', who: 'Who', action: 'Action', campaign: 'Campaign', details: 'Details', system: 'ANTERA',
+
+    settings_title: 'Settings', team: 'Team', add_user: 'Add person', role: 'Role', disable: 'Disable', enable: 'Enable',
+    tokens: 'API tokens (for n8n, CRM webhooks, connectors)', tokens_sub: 'Tokens can send evidence and read. They can never start or restart spend.',
+    token_name: 'Token name', create_token: 'Create token', token_once: 'Copy this token now. It is shown only once.', revoke: 'Revoke',
+    ingest_example: 'Send evidence', rules_title: 'Autonomy', may: 'ANTERA may', never: 'ANTERA never',
+    may_list: 'Re-run the chain daily|Open investigations when numbers tip|Pause spend when the chain breaks|Create tasks and notify owners',
+    never_list: 'Start or restart a campaign|Raise or shift budget|Send anything to customers|Change definitions or rules|Rate or rank people',
+    adapter: 'Ad platform connection', adapter_manual: 'manual (pauses become tasks)', adapter_webhook: 'webhook (e.g. n8n → Ads API)', adapter_demo: 'demo (simulated)',
+
+    e_FORBIDDEN: 'You are not allowed to do this.', e_FOUR_EYES: 'Four-eyes rule: the owner cannot start their own campaign.',
+    e_NOT_GO: 'Not possible: the launch chain is not GO.', e_REASON_REQUIRED: 'Please give a reason.', e_INVALID_LOGIN: 'Email or password is wrong.',
+    e_PASSWORD_TOO_SHORT: 'Password needs at least 10 characters.', e_EMAIL_TAKEN: 'This email is already in use.', e_INVALID_CRITERIA: 'Criteria are invalid:',
+    e_INVALID_KEY: 'Key must be lowercase letters, digits or _.', e_LABEL_REQUIRED: 'Please give a label.', e_NAME_REQUIRED: 'Please give a name.',
+    e_INVALID_FIELD_NAME: 'Field names must be snake_case (e.g. company_size).', e_INVALID_TRANSITION: 'Not possible in the current state.',
+    e_CAMPAIGN_ENDED: 'This campaign has ended.', e_TOO_MANY_ATTEMPTS: 'Too many attempts. Wait a minute.', e_INVALID_JSON: 'That is not valid JSON.',
+    e_LAST_ADMIN: 'There must be at least one admin.', e_CANNOT_DISABLE_SELF: 'You cannot disable yourself.',
+
+    // ----- findings -----
+    o_TRACKING_OK: 'Landing page carries utm_campaign "{utm}", matching the attribution key.',
+    o_TRACKING_NO_URL: 'No landing page URL is configured.', i_TRACKING_NO_URL: 'Clicks cannot be attributed to this campaign.', v_TRACKING_NO_URL: 'Add the landing page URL with utm_campaign.',
+    o_TRACKING_BAD_URL: '"{url}" is not a valid URL.', i_TRACKING_BAD_URL: 'Clicks cannot be attributed.', v_TRACKING_BAD_URL: 'Correct the landing page URL.',
+    o_TRACKING_NO_UTM: 'The landing page URL has no utm_campaign parameter.', i_TRACKING_NO_UTM: 'Leads from this campaign cannot be told apart from other traffic, so no deal can be traced back to it.', v_TRACKING_NO_UTM: 'Add utm_campaign to the URL in the ad platform.',
+    o_TRACKING_MISMATCH: 'utm_campaign is "{utm}", but the attribution key is "{key}".', i_TRACKING_MISMATCH: 'Leads arrive under a different name; reporting and deal attribution will miss them.', v_TRACKING_MISMATCH: 'Make both the same.',
+    o_CONSENT_OK: 'Consent field "{field}" is on the form and mapped to "{crm}".',
+    o_CONSENT_MISSING: 'The form has no consent field.', i_CONSENT_MISSING: 'Leads may not be contacted or processed lawfully.', v_CONSENT_MISSING: 'Add a consent field and set it here.',
+    o_CONSENT_NOT_MAPPED: 'Consent "{field}" is collected but not mapped to the CRM.', i_CONSENT_NOT_MAPPED: 'Sales cannot see whether a lead agreed to be contacted.', v_CONSENT_NOT_MAPPED: 'Map the consent field to the CRM.',
+    o_GOAL_OK: 'Goal "{key}" is defined (version {version}).',
+    o_GOAL_UNDEFINED: 'Goal "{key}" has no active definition.', i_GOAL_UNDEFINED: 'Nobody can say whether this campaign reached its goal.', v_GOAL_UNDEFINED: 'Pick an existing definition or ask an admin to create one.',
+    o_MAPPING_OK: 'Every field the goal needs reaches the CRM: {fields}.',
+    o_MAPPING_MISSING: 'The goal "{key}" v{version} needs {fields}, but the form-to-CRM mapping does not deliver it.', i_MAPPING_MISSING: 'Leads will arrive in the CRM without {fields}, so none of them can ever count as "{key}". The campaign would spend budget it cannot prove.', v_MAPPING_MISSING: 'Map {fields} from the form to the CRM, then send a test lead.',
+    o_MAPPING_NO_GOAL: 'No goal definition to compare the mapping with.', i_MAPPING_NO_GOAL: 'It is unknown which fields must reach the CRM.', v_MAPPING_NO_GOAL: 'Set a defined goal first.',
+    o_DEAL_OK: 'Deals can be traced back via "{key}".',
+    o_DEAL_NO_DEFINITION: 'There is no active "{key}" definition.', i_DEAL_NO_DEFINITION: 'No deal can be counted for any campaign.', v_DEAL_NO_DEFINITION: 'Ask an admin to define what counts as an opportunity.',
+    o_DEAL_NO_ATTRIBUTION: 'No attribution key is set.', i_DEAL_NO_ATTRIBUTION: 'Deals cannot be linked back to this campaign.', v_DEAL_NO_ATTRIBUTION: 'Set the attribution key (= utm_campaign).',
+    o_ROUNDTRIP_OK: 'Test lead {ref} reached the CRM complete after {seconds} s.',
+    o_ROUNDTRIP_NO_TEST: 'No test lead has been sent yet.', i_ROUNDTRIP_NO_TEST: 'The chain is configured but not proven. That is a hint, not a failure.', v_ROUNDTRIP_NO_TEST: 'Submit the live form once with a test lead and send its CRM record.',
+    o_ROUNDTRIP_STALE: 'The last test lead is {hours} h old (max {max} h).', i_ROUNDTRIP_STALE: 'Something may have changed since.', v_ROUNDTRIP_STALE: 'Send a fresh test lead.',
+    o_ROUNDTRIP_BEFORE_PAUSE: 'The last test lead ({ref}) was sent before the campaign was paused.', i_ROUNDTRIP_BEFORE_PAUSE: 'It cannot prove that the cause of the pause is fixed.', v_ROUNDTRIP_BEFORE_PAUSE: 'Fix the cause, then send a new test lead.',
+    o_ROUNDTRIP_PENDING: 'Test lead {ref} was sent {minutes} min ago; no CRM record yet.', i_ROUNDTRIP_PENDING: 'Sync may still be running.', v_ROUNDTRIP_PENDING: 'Wait and re-run the checks.',
+    o_ROUNDTRIP_NOT_SYNCED: 'Test lead {ref} was sent {minutes} min ago and never reached the CRM.', i_ROUNDTRIP_NOT_SYNCED: 'Form-to-CRM sync is broken: real leads would be lost.', v_ROUNDTRIP_NOT_SYNCED: 'Check the form integration (webhook, n8n, CRM form).',
+    o_ROUNDTRIP_NO_GOAL: 'Test lead {ref} arrived, but there is no goal to check it against.', i_ROUNDTRIP_NO_GOAL: 'Completeness is unknown.', v_ROUNDTRIP_NO_GOAL: 'Set a defined goal.',
+    o_ROUNDTRIP_FIELDS_MISSING: 'Test lead {ref} reached the CRM without {fields}.', i_ROUNDTRIP_FIELDS_MISSING: 'Real leads will arrive the same way and can never qualify for the goal.', v_ROUNDTRIP_FIELDS_MISSING: 'Fix the mapping or CRM workflow for {fields}, then send a new test lead.',
+    o_MON_SAMPLE_SMALL: 'Only {n} leads in the window (need {min}).', i_MON_SAMPLE_SMALL: 'Too little traffic to judge. A hint, not a finding.', v_MON_SAMPLE_SMALL: 'Check again once more traffic has arrived.',
+    o_MON_NOT_SYNCED: '{lost} of {n} leads ({pct} %) never reached the CRM (allowed: {max} %).', i_MON_NOT_SYNCED: 'The form-to-CRM sync broke while the campaign was running. Budget is buying leads that sales never sees.', v_MON_NOT_SYNCED: 'Check the form integration and the CRM import.',
+    o_MON_SYNCED: '{n} leads checked; {lost} not (yet) in the CRM.',
+    o_MON_NO_GOAL: 'Goal "{key}" has no active definition.', i_MON_NO_GOAL: 'Completeness cannot be judged.', v_MON_NO_GOAL: 'Set a defined goal.',
+    o_MON_FIELDS_DROPPED: 'Only {pct} % of {n} leads arrived with every goal field (need {min} %). Missing most: {fields}.', i_MON_FIELDS_DROPPED: 'The CRM is losing {fields}. Those leads can never qualify; the campaign is spending without being able to prove its goal.', v_MON_FIELDS_DROPPED: 'Find what changed in the form, mapping or CRM workflow. Fix it, then send a test lead.',
+    o_MON_COMPLETE: '{pct} % of {n} leads arrived with every goal field.',
+    o_MON_SPEND_NO_LEADS: '{spend} spent in the last {hours} h, but no form submissions.', i_MON_SPEND_NO_LEADS: 'Possibly tracking is broken, or the audience is wrong. Absence is a hint, not proof.', v_MON_SPEND_NO_LEADS: 'Check the landing page, the form and the ad targeting.',
+    o_MON_ACTIVITY: '{n} submissions, {spend} spent.'
+  },
+
+  de: {
+    nav_campaigns: 'Kampagnen', nav_definitions: 'Begriffe', nav_tasks: 'Aufgaben', nav_audit: 'Prüfprotokoll', nav_settings: 'Einstellungen', logout: 'Abmelden',
+    setup_title: '{product} einrichten', setup_sub: 'Lege das erste Admin-Konto an. Dein Team kannst du danach einladen.',
+    name: 'Name', email: 'E-Mail', password: 'Passwort', pw_hint: 'Mindestens 10 Zeichen.', create_admin: 'Admin-Konto anlegen',
+    login_title: 'Bei {product} anmelden', login: 'Anmelden',
+    demo_banner: 'Demo-Modus: fiktives Team und fiktive Daten. Logins: alex@example.test (Admin), sam@example.test (Freigabe), kim@example.test (Marketing). Passwort: demo-password-123',
+    role_admin: 'Admin', role_approver: 'Freigabe', role_member: 'Marketing',
+    error: 'Etwas ist schiefgelaufen', saved: 'Gespeichert', create: 'Anlegen', cancel: 'Abbrechen', save: 'Speichern', back: '← Alle Kampagnen',
+
+    camps_title: 'Kampagnen', camps_sub: 'ANTERA prüft die Kette vom Klick bis zum Deal vor dem Start und täglich im Lauf. Bricht sie, pausiert ANTERA die Ausgaben. Starten tut ANTERA nie.',
+    new_campaign: 'Neue Kampagne', no_campaigns: 'Noch keine Kampagnen.', owner: 'Owner', open_tasks: 'offene Aufgaben', channel: 'Kanal',
+    principle: 'Darf stoppen. Nie starten.',
+    st_draft: 'ENTWURF', st_live: 'LIVE', st_paused: 'PAUSIERT', st_ended: 'BEENDET',
+    st_GO: 'GO', st_BLOCKED: 'BLOCKED', st_HEALTHY: 'INTAKT', st_UNCLEAR: 'UNKLAR', st_BROKEN: 'GEBROCHEN',
+    spend: 'Ausgaben', spend_running: 'laufen', spend_paused: 'pausiert', spend_off: 'aus', spend_unknown: 'unbekannt (Ads-Plattform prüfen)',
+
+    f_name: 'Kampagnenname', f_channel: 'Kanal (z. B. LinkedIn Ads)', f_goal: 'Zieldefinition', f_attr: 'Attributionsschlüssel (= utm_campaign)',
+    f_url: 'Landingpage-URL (mit utm_campaign)', f_form: 'Formularfelder (kommagetrennt)', f_map: 'CRM-Zuordnung (pro Zeile: formularfeld = crm_feld)',
+    f_consent: 'Einwilligungsfeld', f_budget: 'Tagesbudget', f_map_hint: 'Felder, die das CRM selbst berechnet ({fields}), brauchen keine Zuordnung.',
+
+    head_draft_GO: 'Bereit. Eine benannte Person mit Freigaberecht darf starten.', head_draft_BLOCKED: 'Start blockiert.',
+    head_live_HEALTHY: 'Live. Die Kette hält.', head_live_UNCLEAR: 'Live. Etwas sollte geprüft werden.', head_live_BROKEN: 'Live, aber die Kette ist gebrochen.',
+    head_paused: 'Pausiert.', head_paused_sys: 'Von ANTERA pausiert.', head_ended: 'Beendet.',
+    expl_draft_GO: 'Jeder Schritt vom Klick bis zum Deal ist belegt, inklusive frischem Test-Lead. GO ist keine Erfolgsprognose.',
+    expl_draft_BLOCKED: 'Mindestens ein Schritt vom Klick bis zum Deal ist nicht belegt. Niemand kann starten, bis er es ist.',
+    expl_live_HEALTHY: 'Konfiguration und echter Traffic passen. ANTERA prüft täglich und pausiert die Ausgaben, wenn die Kette bricht.',
+    expl_live_UNCLEAR: 'Nichts ist nachweislich kaputt, aber etwas ließ sich nicht prüfen. Das ist ein Hinweis, kein Befund: ANTERA hat eine Untersuchung angelegt und lässt die Kampagne laufen.',
+    expl_paused: 'Die Ausgaben sind pausiert. Ursache beheben, Test-Lead senden, Prüfung laufen lassen. Neu starten darf nur eine benannte Person. ANTERA startet nie selbst.',
+    expl_ended: 'Diese Kampagne ist abgeschlossen. Belege und Protokoll bleiben erhalten.',
+    cause: 'Ursache',
+
+    start: 'Kampagne starten', restart: 'Kampagne neu starten', pause: 'Jetzt pausieren', end_c: 'Kampagne beenden', run_checks: 'Jetzt prüfen',
+    reason: 'Begründung (Pflicht, landet im Protokoll)', confirm: 'Bestätigen',
+    start_why_not_go: 'Nur mit GO möglich.', start_why_role: 'Nur Personen mit Freigaberecht, persönlich angemeldet.', start_why_owner: 'Vier-Augen-Prinzip: Der Owner kann die eigene Kampagne nicht starten.',
+    chain_title: 'Prüfkette', chain_sub: 'Klick → Formular → CRM → Test-Lead → Zieldefinition → Deal. Jeder Schritt braucht ein frisches Bestanden.',
+    stage_click: 'Klick', stage_form: 'Formular', stage_crm: 'CRM', stage_test: 'Test-Lead', stage_definition: 'Begriff', stage_deal: 'Deal',
+    mon_title: 'Live-Überwachung', mon_sub: 'Echter Traffic der letzten {h} Stunden (seit dem Start).',
+    observed: 'Beobachtet', inferred: 'Abgeleitet', verify: 'Zu prüfen', passed: 'Bestandene Prüfungen',
+    checked: 'geprüft {when}', never_checked: 'noch nicht geprüft',
+    evidence: 'Belege (letzte {h} h)', ev_subs: 'Formular-Einsendungen', ev_tests: 'Test-Leads', ev_records: 'CRM-Datensätze', ev_spend: 'Ausgaben', ev_deals: 'Deals (gesamt)',
+    tasks: 'Aufgaben', no_tasks: 'Keine offenen Aufgaben.', done: 'Erledigt', mark_done: 'Erledigt',
+    history: 'Eingriffe', no_history: 'Noch keine Eingriffe.', by_system: 'ANTERA (Regel {rule})', by_human: '{name}',
+    act_start: 'Gestartet', act_restart: 'Neu gestartet', act_pause: 'Pausiert',
+    config_title: 'Konfiguration der Kette', edit: 'Bearbeiten',
+    defs_used: 'Verwendete Begriffe',
+    demo_title: 'Demo: Belege simulieren', demo_sub: 'Diese Knöpfe schicken synthetische Ereignisse durch die normale Aufnahme (E-Mails werden gehasht) und lassen danach die Prüfung laufen.',
+    demo_test: 'Vollständigen Test-Lead senden', demo_test_broken: 'Test-Lead (Feld fehlt)', demo_traffic: 'Traffic: intakt', demo_traffic_broken: 'Traffic: CRM verliert ein Feld', demo_spend: 'Ausgaben ohne Leads',
+
+    defs_title: 'Begriffe', defs_sub: 'Was als MQL, SQL oder Opportunity zählt: versioniert, gemeinsam für Marketing und Vertrieb. Eine Änderung ist immer eine neue Version; alte bleiben erhalten. Kampagnen, die einen geänderten Begriff nutzen, werden sofort neu geprüft.',
+    version: 'Version', active: 'aktiv', new_version: 'Neue Version', key: 'Schlüssel (z. B. sql)', label: 'Bezeichnung', criteria_json: 'Kriterien (JSON)', note: 'Warum diese Änderung?',
+    criteria_help: 'Alle Kriterien müssen erfüllt sein. Operatoren: eq, neq, gt, gte, lt, lte, in, exists. Beispiel: [{"field":"company_size","op":"exists"}]',
+    op_eq: '{field} = {value}', op_neq: '{field} ≠ {value}', op_gt: '{field} > {value}', op_gte: '{field} ≥ {value}', op_lt: '{field} < {value}', op_lte: '{field} ≤ {value}', op_in: '{field} ist eines von {value}', op_exists: '{field} ist ausgefüllt',
+    by_on: 'von {name}, {when}', older: 'Ältere Versionen', admin_only: 'Nur Admins können eine neue Version anlegen.',
+
+    tasks_title: 'Aufgaben', tasks_sub: 'Wofür ANTERA einen Menschen braucht. Pro Kampagne und Grund eine offene Aufgabe, damit die tägliche Prüfung niemanden flutet.', show_done: 'Erledigte zeigen', show_open: 'Offene zeigen',
+    task_TASK_PAUSED: 'ANTERA hat die Ausgaben pausiert: Die Kette ist gebrochen. Ursache finden und beheben.',
+    task_TASK_INVESTIGATE: 'Etwas ließ sich nicht prüfen. Untersuchen; die Kampagne läuft weiter.',
+    task_TASK_RESTART_POSSIBLE: 'Die Kette ist wieder belegt. Eine Person mit Freigaberecht darf neu starten.',
+    task_TASK_PAUSE_MANUALLY: 'Kampagne in der Ads-Plattform von Hand pausieren: ANTERA hat sie nicht erreicht.',
+    task_TASK_START_MANUALLY: 'Kampagne in der Ads-Plattform von Hand starten: ANTERA hat keine Verbindung dorthin.',
+
+    audit_title: 'Prüfprotokoll', audit_sub: 'Nur anhängend und per Hash verkettet: jede Prüfung, Pause, jeder Start und jede Änderung, mit Person oder Regel.',
+    audit_ok: 'Hash-Kette intakt.', audit_broken: 'Hash-Kette bei Eintrag {id} gebrochen. Das Protokoll wurde verändert.',
+    when: 'Wann', who: 'Wer', action: 'Aktion', campaign: 'Kampagne', details: 'Details', system: 'ANTERA',
+
+    settings_title: 'Einstellungen', team: 'Team', add_user: 'Person hinzufügen', role: 'Rolle', disable: 'Sperren', enable: 'Entsperren',
+    tokens: 'API-Tokens (für n8n, CRM-Webhooks, Connectoren)', tokens_sub: 'Tokens dürfen Belege senden und lesen. Ausgaben starten oder neu starten dürfen sie nie.',
+    token_name: 'Name des Tokens', create_token: 'Token anlegen', token_once: 'Token jetzt kopieren. Es wird nur einmal angezeigt.', revoke: 'Widerrufen',
+    ingest_example: 'Belege senden', rules_title: 'Autonomie', may: 'ANTERA darf', never: 'ANTERA darf nie',
+    may_list: 'Die Prüfkette täglich neu ausführen|Untersuchungen starten, wenn Zahlen kippen|Ausgaben pausieren, wenn die Kette bricht|Aufgaben anlegen und Owner benachrichtigen',
+    never_list: 'Eine Kampagne starten oder neu starten|Budget erhöhen oder umverteilen|Etwas an Kunden senden|Begriffe oder Regeln ändern|Menschen bewerten oder ranken',
+    adapter: 'Verbindung zur Ads-Plattform', adapter_manual: 'manuell (Pausen werden Aufgaben)', adapter_webhook: 'Webhook (z. B. n8n → Ads-API)', adapter_demo: 'Demo (simuliert)',
+
+    e_FORBIDDEN: 'Das darfst du nicht.', e_FOUR_EYES: 'Vier-Augen-Prinzip: Der Owner kann die eigene Kampagne nicht starten.',
+    e_NOT_GO: 'Nicht möglich: Die Prüfkette steht nicht auf GO.', e_REASON_REQUIRED: 'Bitte eine Begründung angeben.', e_INVALID_LOGIN: 'E-Mail oder Passwort ist falsch.',
+    e_PASSWORD_TOO_SHORT: 'Das Passwort braucht mindestens 10 Zeichen.', e_EMAIL_TAKEN: 'Diese E-Mail wird schon verwendet.', e_INVALID_CRITERIA: 'Kriterien ungültig:',
+    e_INVALID_KEY: 'Schlüssel: nur Kleinbuchstaben, Ziffern oder _.', e_LABEL_REQUIRED: 'Bitte eine Bezeichnung angeben.', e_NAME_REQUIRED: 'Bitte einen Namen angeben.',
+    e_INVALID_FIELD_NAME: 'Feldnamen bitte in snake_case (z. B. company_size).', e_INVALID_TRANSITION: 'Im aktuellen Zustand nicht möglich.',
+    e_CAMPAIGN_ENDED: 'Diese Kampagne ist beendet.', e_TOO_MANY_ATTEMPTS: 'Zu viele Versuche. Bitte eine Minute warten.', e_INVALID_JSON: 'Das ist kein gültiges JSON.',
+    e_LAST_ADMIN: 'Es muss mindestens einen Admin geben.', e_CANNOT_DISABLE_SELF: 'Du kannst dich nicht selbst sperren.',
+
+    o_TRACKING_OK: 'Die Landingpage trägt utm_campaign „{utm}“, passend zum Attributionsschlüssel.',
+    o_TRACKING_NO_URL: 'Keine Landingpage-URL hinterlegt.', i_TRACKING_NO_URL: 'Klicks lassen sich dieser Kampagne nicht zuordnen.', v_TRACKING_NO_URL: 'Landingpage-URL mit utm_campaign eintragen.',
+    o_TRACKING_BAD_URL: '„{url}“ ist keine gültige URL.', i_TRACKING_BAD_URL: 'Klicks lassen sich nicht zuordnen.', v_TRACKING_BAD_URL: 'Landingpage-URL korrigieren.',
+    o_TRACKING_NO_UTM: 'Die Landingpage-URL hat keinen utm_campaign-Parameter.', i_TRACKING_NO_UTM: 'Leads dieser Kampagne sind von anderem Traffic nicht zu unterscheiden; kein Deal lässt sich zurückverfolgen.', v_TRACKING_NO_UTM: 'utm_campaign in der Ads-Plattform an die URL hängen.',
+    o_TRACKING_MISMATCH: 'utm_campaign ist „{utm}“, der Attributionsschlüssel aber „{key}“.', i_TRACKING_MISMATCH: 'Leads kommen unter anderem Namen an; Reporting und Deal-Zuordnung verfehlen sie.', v_TRACKING_MISMATCH: 'Beides angleichen.',
+    o_CONSENT_OK: 'Einwilligungsfeld „{field}“ ist im Formular und auf „{crm}“ gemappt.',
+    o_CONSENT_MISSING: 'Das Formular hat kein Einwilligungsfeld.', i_CONSENT_MISSING: 'Leads dürfen womöglich nicht rechtmäßig verarbeitet oder kontaktiert werden.', v_CONSENT_MISSING: 'Einwilligungsfeld ergänzen und hier eintragen.',
+    o_CONSENT_NOT_MAPPED: 'Einwilligung „{field}“ wird erfasst, aber nicht ins CRM übertragen.', i_CONSENT_NOT_MAPPED: 'Der Vertrieb sieht nicht, ob ein Lead einer Kontaktaufnahme zugestimmt hat.', v_CONSENT_NOT_MAPPED: 'Einwilligungsfeld ins CRM mappen.',
+    o_GOAL_OK: 'Ziel „{key}“ ist definiert (Version {version}).',
+    o_GOAL_UNDEFINED: 'Ziel „{key}“ hat keine aktive Definition.', i_GOAL_UNDEFINED: 'Niemand kann sagen, ob die Kampagne ihr Ziel erreicht hat.', v_GOAL_UNDEFINED: 'Vorhandenen Begriff wählen oder Admin um einen neuen bitten.',
+    o_MAPPING_OK: 'Jedes Feld, das das Ziel braucht, erreicht das CRM: {fields}.',
+    o_MAPPING_MISSING: 'Das Ziel „{key}“ v{version} braucht {fields}, aber die Zuordnung Formular → CRM liefert es nicht.', i_MAPPING_MISSING: 'Leads kommen ohne {fields} im CRM an und können nie als „{key}“ zählen. Die Kampagne würde Budget ausgeben, dessen Wirkung sie nicht belegen kann.', v_MAPPING_MISSING: '{fields} vom Formular ins CRM mappen, dann Test-Lead senden.',
+    o_MAPPING_NO_GOAL: 'Keine Zieldefinition, mit der die Zuordnung verglichen werden kann.', i_MAPPING_NO_GOAL: 'Unklar, welche Felder das CRM erreichen müssen.', v_MAPPING_NO_GOAL: 'Zuerst ein definiertes Ziel setzen.',
+    o_DEAL_OK: 'Deals lassen sich über „{key}“ zurückverfolgen.',
+    o_DEAL_NO_DEFINITION: 'Es gibt keine aktive Definition „{key}“.', i_DEAL_NO_DEFINITION: 'Für keine Kampagne lässt sich ein Deal zählen.', v_DEAL_NO_DEFINITION: 'Admin bitten, Opportunity zu definieren.',
+    o_DEAL_NO_ATTRIBUTION: 'Kein Attributionsschlüssel gesetzt.', i_DEAL_NO_ATTRIBUTION: 'Deals lassen sich dieser Kampagne nicht zuordnen.', v_DEAL_NO_ATTRIBUTION: 'Attributionsschlüssel (= utm_campaign) setzen.',
+    o_ROUNDTRIP_OK: 'Test-Lead {ref} kam nach {seconds} s vollständig im CRM an.',
+    o_ROUNDTRIP_NO_TEST: 'Noch kein Test-Lead gesendet.', i_ROUNDTRIP_NO_TEST: 'Die Kette ist konfiguriert, aber nicht belegt. Ein Hinweis, kein Fehler.', v_ROUNDTRIP_NO_TEST: 'Das Live-Formular einmal mit einem Test-Lead absenden und den CRM-Datensatz schicken.',
+    o_ROUNDTRIP_STALE: 'Der letzte Test-Lead ist {hours} h alt (max. {max} h).', i_ROUNDTRIP_STALE: 'Seitdem kann sich etwas geändert haben.', v_ROUNDTRIP_STALE: 'Frischen Test-Lead senden.',
+    o_ROUNDTRIP_BEFORE_PAUSE: 'Der letzte Test-Lead ({ref}) wurde vor der Pause gesendet.', i_ROUNDTRIP_BEFORE_PAUSE: 'Er kann nicht belegen, dass die Ursache der Pause behoben ist.', v_ROUNDTRIP_BEFORE_PAUSE: 'Ursache beheben, dann neuen Test-Lead senden.',
+    o_ROUNDTRIP_PENDING: 'Test-Lead {ref} vor {minutes} min gesendet; noch kein CRM-Datensatz.', i_ROUNDTRIP_PENDING: 'Die Synchronisierung läuft eventuell noch.', v_ROUNDTRIP_PENDING: 'Warten und erneut prüfen.',
+    o_ROUNDTRIP_NOT_SYNCED: 'Test-Lead {ref} wurde vor {minutes} min gesendet und kam nie im CRM an.', i_ROUNDTRIP_NOT_SYNCED: 'Die Übertragung Formular → CRM ist kaputt: Echte Leads gingen verloren.', v_ROUNDTRIP_NOT_SYNCED: 'Formular-Anbindung prüfen (Webhook, n8n, CRM-Formular).',
+    o_ROUNDTRIP_NO_GOAL: 'Test-Lead {ref} kam an, aber es gibt kein Ziel zum Abgleich.', i_ROUNDTRIP_NO_GOAL: 'Vollständigkeit unbekannt.', v_ROUNDTRIP_NO_GOAL: 'Definiertes Ziel setzen.',
+    o_ROUNDTRIP_FIELDS_MISSING: 'Test-Lead {ref} kam ohne {fields} im CRM an.', i_ROUNDTRIP_FIELDS_MISSING: 'Echte Leads kommen genauso an und können das Ziel nie erreichen.', v_ROUNDTRIP_FIELDS_MISSING: 'Zuordnung oder CRM-Workflow für {fields} reparieren, dann neuen Test-Lead senden.',
+    o_MON_SAMPLE_SMALL: 'Nur {n} Leads im Zeitfenster (nötig: {min}).', i_MON_SAMPLE_SMALL: 'Zu wenig Traffic für ein Urteil. Ein Hinweis, kein Befund.', v_MON_SAMPLE_SMALL: 'Erneut prüfen, wenn mehr Traffic da ist.',
+    o_MON_NOT_SYNCED: '{lost} von {n} Leads ({pct} %) kamen nie im CRM an (erlaubt: {max} %).', i_MON_NOT_SYNCED: 'Die Übertragung Formular → CRM brach im laufenden Betrieb. Das Budget kauft Leads, die der Vertrieb nie sieht.', v_MON_NOT_SYNCED: 'Formular-Anbindung und CRM-Import prüfen.',
+    o_MON_SYNCED: '{n} Leads geprüft; {lost} (noch) nicht im CRM.',
+    o_MON_NO_GOAL: 'Ziel „{key}“ hat keine aktive Definition.', i_MON_NO_GOAL: 'Vollständigkeit nicht beurteilbar.', v_MON_NO_GOAL: 'Definiertes Ziel setzen.',
+    o_MON_FIELDS_DROPPED: 'Nur {pct} % von {n} Leads kamen mit allen Zielfeldern an (nötig: {min} %). Am häufigsten fehlt: {fields}.', i_MON_FIELDS_DROPPED: 'Das CRM verliert {fields}. Diese Leads können nie qualifizieren; die Kampagne gibt Geld aus, ohne ihr Ziel belegen zu können.', v_MON_FIELDS_DROPPED: 'Herausfinden, was sich an Formular, Zuordnung oder CRM-Workflow geändert hat. Beheben, dann Test-Lead senden.',
+    o_MON_COMPLETE: '{pct} % von {n} Leads kamen mit allen Zielfeldern an.',
+    o_MON_SPEND_NO_LEADS: '{spend} in den letzten {hours} h ausgegeben, aber keine Formular-Einsendungen.', i_MON_SPEND_NO_LEADS: 'Vielleicht ist das Tracking kaputt oder die Zielgruppe falsch. Abwesenheit ist ein Hinweis, kein Beweis.', v_MON_SPEND_NO_LEADS: 'Landingpage, Formular und Targeting prüfen.',
+    o_MON_ACTIVITY: '{n} Einsendungen, {spend} ausgegeben.'
+  }
+};
+
+let lang = 'en';
+export const setLang = l => { lang = STRINGS[l] ? l : 'en'; document.documentElement.lang = lang; };
+export const getLang = () => lang;
+export const has = key => key in STRINGS[lang] || key in STRINGS.en;
+
+export function t(key, params = {}) {
+  const s = STRINGS[lang][key] ?? STRINGS.en[key] ?? key;
+  return s.replace(/\{(\w+)\}/g, (_, k) => {
+    const v = params[k];
+    if (Array.isArray(v)) return v.join(', ');
+    return v === undefined || v === null ? '—' : String(v);
+  });
+}
+
+export function fmtDate(ms) {
+  if (!ms) return '—';
+  return new Intl.DateTimeFormat(lang === 'de' ? 'de-DE' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ms));
+}

@@ -1,0 +1,15 @@
+services:
+  antera:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      ANTERA_CONFIG: /config/antera.config.json
+      # Set to 1 when ANTERA is served over HTTPS (behind a reverse proxy):
+      ANTERA_SECURE_COOKIES: "0"
+    volumes:
+      - antera-data:/data
+      - ./antera.config.json:/config/antera.config.json:ro
+    restart: unless-stopped
+volumes:
+  antera-data:

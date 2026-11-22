@@ -1,0 +1,18 @@
+{
+  "org": { "name": "Your team", "productName": "ANTERA", "accent": "#70c8bc", "logoText": "AN" },
+  "language": "en",
+  "rules": {
+    "maxTestAgeHours": 48,
+    "syncGraceMinutes": 30,
+    "monitorWindowHours": 24,
+    "minSample": 5,
+    "completenessThreshold": 0.9,
+    "maxUnsyncedShare": 0.2,
+    "crmComputedFields": ["lead_score", "lifecycle_stage"],
+    "opportunityKey": "opportunity",
+    "fourEyes": true
+  },
+  "scheduler": { "recheckMinutes": 1440 },
+  "adapter": { "type": "manual", "url": "" },
+  "notify": { "webhookUrl": "" }
+}
