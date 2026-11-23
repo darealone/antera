@@ -31,7 +31,7 @@ Create an API token in ANTERA under **Settings → API tokens**. In n8n, add an 
 
 | Field | Meaning |
 |---|---|
-| `kind` | `form_submit`, `crm_record`, `spend`, `deal` or `conversation` |
+| `kind` | `form_submit`, `crm_record`, `spend`, `deal`, `conversation` or `activity` |
 | `campaign` or `utm_campaign` | ANTERA campaign id, or its attribution key |
 | `email` or `ref` | Links the form submission to its CRM record. Emails are hashed on arrival and never stored. |
 | `test` | `true` for test leads (used for the launch check, ignored by live monitoring) |
@@ -53,6 +53,19 @@ Deals and call notes (used by the Level 2 investigator):
 ```
 
 Use the same `ref` for a lead's form submission, CRM record, deal and calls, so the investigator can follow one deal from click to close.
+
+Activities for Level 3 (calendar and email metadata) name **roles, not people**. Map attendees to roles in n8n, for example with a lookup table of email domains or job titles, and send only the roles:
+
+```json
+{ "events": [
+  { "kind": "activity", "utm_campaign": "webinar-ai-sales", "ref": "{{ $json.deal_id }}", "at": "{{ $json.start }}",
+    "fields": { "type": "meeting", "roles": "champion,finance,it_security" } }
+] }
+```
+
+`type` is one of `meeting`, `call`, `email`, `document` or `escalation` (the topic went to the steering committee). Role names must match the veto profile keys (`works_council`, `it_security`, `privacy`, `finance`, `procurement`, `management`) or `champion`.
+
+After a briefing, ANTERA sends `gap.briefed` to `notify.webhookUrl`, with the date, participants and open points, so an n8n workflow can log it in the CRM.
 
 Typical workflows:
 

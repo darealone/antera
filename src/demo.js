@@ -87,6 +87,7 @@ export async function seedDemo(svc, db, { clock = () => Date.now() } = {}) {
   const admin = svc.createUser(null, { email: 'alex@example.test', name: 'Alex Admin', password: DEMO_PASSWORD });
   const sam = svc.createUser(admin, { email: 'sam@example.test', name: 'Sam Approver', role: 'approver', password: DEMO_PASSWORD });
   const kim = svc.createUser(admin, { email: 'kim@example.test', name: 'Kim Marketing', role: 'member', password: DEMO_PASSWORD });
+  const pat = svc.createUser(admin, { email: 'pat@example.test', name: 'Pat Legal', role: 'approver', password: DEMO_PASSWORD });
   const as = u => ({ ...u, via: 'session' });
 
   // Foundation. SQL has two versions to show versioning: v2 added the company-size requirement.
@@ -130,6 +131,9 @@ export async function seedDemo(svc, db, { clock = () => Date.now() } = {}) {
   await svc.ingest(as(kim), { events: dealHistory(paper.campaign.id, now, PAPER_DEALS) });
   await svc.ingest(as(kim), { events: dealHistory(brand.campaign.id, now, BRAND_DEALS) });
   await replayInvestigation(svc, db, paper.campaign.id, { clock });
+
+  // Level 3: a claim library and two open deals before the proposal.
+  await seedPortability(svc, db, { paper: paper.campaign.id, brand: brand.campaign.id, kim: as(kim), sam: as(sam), pat: as(pat), alex: as(admin), now });
 
   return { admin, sam, kim };
 }
@@ -230,4 +234,73 @@ async function replayInvestigation(svc, db, campaignId, { clock }) {
     campaignId, out.status, now - 2 * MIN, now, JSON.stringify(report), JSON.stringify(out.toolCalls), JSON.stringify({ requests: out.usage.requests, usd: 0 })).lastInsertRowid);
   db.audit('investigation.finished', { campaignId, data: { investigationId: invId, status: out.status, trigger: 'demo', findings: report.findings?.length ?? 0, unsupported: report.unsupported?.length ?? 0, handoffs: report.handoffs?.length ?? 0 }, at: now });
   if (report.handoffs?.length) db.run("INSERT INTO tasks (campaign_id, owner_id, code, cause, created_at) VALUES (?, ?, 'TASK_HANDOFF_L3', ?, ?)", campaignId, campaign.owner_id, JSON.stringify({ investigation: invId, deals: report.handoffs.length }), now);
+}
+
+// ---------- Level 3 demo data ----------
+
+async function seedPortability(svc, db, { paper, brand, kim, sam, pat, alex, now }) {
+  // Claim library. Kim (marketing) writes; product, legal and privacy sign as three different people.
+  const claim = (topic, text, source, parts, sign = ['product', 'legal', 'privacy']) => {
+    const { id } = svc.createClaim(kim, { topic, text, source, parts });
+    const by = { product: sam, legal: pat, privacy: alex };
+    for (const c of sign) svc.approveClaim(by[c], id, { capacity: c });
+    return id;
+  };
+  claim('works_council', 'Individual performance evaluation is technically disabled: reports only show teams of five people or more.', 'Product spec v3.2, section 4', ['monitoring', 'access']);
+  claim('works_council', 'A template works agreement is available and can be shared under NDA.', 'Legal template library', ['agreement'], ['product', 'privacy']); // legal has not signed yet
+  const sso = claim('it_security', 'Single sign-on via SAML and OIDC is included in every plan.', 'Security whitepaper v5', ['sso']);
+  const hosting = claim('it_security', 'Hosted in Frankfurt (EU) in an ISO 27001 certified data centre.', 'Security whitepaper v5', ['hosting']);
+  claim('privacy', 'Customer data is stored in the EU; a data processing agreement (AVV) is part of every contract.', 'Contract template v4', ['location', 'dpa']);
+  claim('privacy', 'Raw activity data is deleted after 90 days.', 'Product spec v3.2, section 7', ['deletion']);
+  claim('procurement', 'In the first year the contract can be cancelled monthly.', 'Sales terms v2', ['terms']);
+  claim('general', 'A pilot with 25 users is available before any long-term commitment.', 'Sales terms v2', []);
+
+  // Won deals of the same size involved finance and IT security before their proposal (pattern for S01).
+  const ev = [];
+  for (const [ref, start] of [['B-2001', 40], ['B-2002', 39]]) {
+    const t0 = now - start * DAY;
+    ev.push({ kind: 'crm_record', campaign: brand, ref, at: t0 + DAY, source: 'demo-crm', fields: { company_size: '1000+', consent: true, lifecycle_stage: 'sql' } });
+    ev.push({ kind: 'activity', campaign: brand, ref, at: t0 + 2 * DAY, source: 'demo-calendar', fields: { type: 'meeting', roles: 'champion,finance' } });
+    ev.push({ kind: 'activity', campaign: brand, ref, at: t0 + 4 * DAY, source: 'demo-calendar', fields: { type: 'meeting', roles: 'it_security' } });
+  }
+
+  // D-2001: machine builder, 1,200 employees, month seven, just before the proposal.
+  const d = (n) => now - n * DAY;
+  ev.push(
+    { kind: 'crm_record', campaign: paper, ref: 'D-2001', at: d(215), source: 'demo-crm', fields: { company_size: '1000+', consent: true, lifecycle_stage: 'sql' } },
+    { kind: 'deal', campaign: paper, ref: 'D-2001', at: d(210), amount: 84000, source: 'demo-crm', fields: { deal_stage: 'discovery' } },
+    { kind: 'activity', campaign: paper, ref: 'D-2001', at: d(200), source: 'demo-calendar', fields: { type: 'meeting', roles: 'champion' } },
+    { kind: 'activity', campaign: paper, ref: 'D-2001', at: d(150), source: 'demo-calendar', fields: { type: 'meeting', roles: 'champion' } },
+    { kind: 'deal', campaign: paper, ref: 'D-2001', at: d(120), source: 'demo-crm', fields: { deal_stage: 'solution' } },
+    { kind: 'activity', campaign: paper, ref: 'D-2001', at: d(60), source: 'demo-mail', fields: { type: 'email', roles: 'it_security' } },
+    { kind: 'conversation', campaign: paper, ref: 'D-2001', consent: true, at: d(58), source: 'demo-calls',
+      text: 'Champion: IT security sent their questionnaire this week: SSO, hosting, certifications, and who is liable after an incident. Our data protection officer also wants to see the AVV.' },
+    { kind: 'activity', campaign: paper, ref: 'D-2001', at: d(55), source: 'demo-mail', fields: { type: 'email', roles: 'privacy' } },
+    { kind: 'conversation', campaign: paper, ref: 'D-2001', consent: true, at: d(40), source: 'demo-calls',
+      text: 'Champion: Der Betriebsrat hat gefragt, ob das System auswerten kann, wer wie lange woran arbeitet. Das müsste ich noch klären. Ansonsten sind alle sehr positiv.' },
+    { kind: 'conversation', campaign: paper, ref: 'D-2001', consent: true, at: d(25), source: 'demo-calls',
+      text: 'Champion: I will take the business case to the steering committee next Tuesday and come back to you afterwards.' },
+
+    // D-2002: a smaller deal where the right people are already involved. No signals: Level 3 stays quiet.
+    { kind: 'crm_record', campaign: paper, ref: 'D-2002', at: d(45), source: 'demo-crm', fields: { company_size: '50-249', consent: true, lifecycle_stage: 'sql' } },
+    { kind: 'deal', campaign: paper, ref: 'D-2002', at: d(40), amount: 18000, source: 'demo-crm', fields: { deal_stage: 'discovery' } },
+    { kind: 'activity', campaign: paper, ref: 'D-2002', at: d(30), source: 'demo-calendar', fields: { type: 'meeting', roles: 'champion,finance' } }
+  );
+  await svc.ingest(kim, { events: ev });
+
+  // Show the states: privacy was answered directly (a false alarm, counted); IT security got a document.
+  const map = svc.getDeal(kim, paper, 'D-2001');
+  const gap = key => map.roles.find(r => r.profile.key === key)?.gap;
+  if (gap('privacy')) svc.classifyGap(kim, gap('privacy').id, { classification: 'handled' });
+  const it = gap('it_security');
+  if (it) {
+    svc.classifyGap(kim, it.id, { classification: 'shadow' });
+    svc.saveDraft(kim, it.id, { lines: [
+      { kind: 'claim', claim_id: sso }, { kind: 'claim', claim_id: hosting },
+      { kind: 'evidence', evidence_id: map.conversations[0].id, quote: 'SSO, hosting, certifications, and who is liable after an incident' },
+      { kind: 'recommendation', text: 'IT security is already reviewing in the background: send a one-page answer the champion can forward. Do not ask for a meeting.' }
+    ] });
+    svc.approveDraft(sam, it.id, { tests: { corridor: true, protection: true, room: true } });
+    await svc.logBriefing(kim, it.id, { date: new Date(now - 3 * DAY).toISOString().slice(0, 10), participants: 'Champion', note: 'One-pager sent to the champion to forward to IT security.' });
+  }
 }

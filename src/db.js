@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
 -- Evidence: what actually happened. Pseudonymous refs only; no names, emails or phone numbers.
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY, campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('form_submit','crm_record','spend','deal','conversation')),
+  kind TEXT NOT NULL CHECK (kind IN ('form_submit','crm_record','spend','deal','conversation','activity')),
   ref TEXT, is_test INTEGER NOT NULL DEFAULT 0, fields TEXT NOT NULL DEFAULT '{}', amount REAL NOT NULL DEFAULT 0,
   at INTEGER NOT NULL, received_at INTEGER NOT NULL, source TEXT NOT NULL DEFAULT '',
   body TEXT, expires_at INTEGER);
@@ -73,31 +73,60 @@ CREATE TABLE IF NOT EXISTS investigations (
   report TEXT NOT NULL DEFAULT '{}', tool_calls TEXT NOT NULL DEFAULT '[]', usage TEXT NOT NULL DEFAULT '{}', error TEXT);
 CREATE INDEX IF NOT EXISTS investigations_campaign ON investigations(campaign_id, id DESC);
 
+-- Level 3: who can stop a decision. Versioned like definitions; only admins change them.
+CREATE TABLE IF NOT EXISTS veto_profiles (
+  id INTEGER PRIMARY KEY, key TEXT NOT NULL, version INTEGER NOT NULL, label TEXT NOT NULL,
+  veto TEXT NOT NULL CHECK (veto IN ('high','medium','low')), approves TEXT NOT NULL, question TEXT NOT NULL,
+  parts TEXT NOT NULL DEFAULT '[]', keywords TEXT NOT NULL DEFAULT '[]', note TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1,
+  created_by INTEGER REFERENCES users(id), created_at INTEGER NOT NULL, UNIQUE (key, version));
+
+-- Level 3: the claim library. Only statements approved by product, legal and privacy may appear in drafts.
+-- Rows are never edited: a change is a new row that supersedes the old one, and needs new approvals.
+CREATE TABLE IF NOT EXISTS claims (
+  id INTEGER PRIMARY KEY, topic TEXT NOT NULL, text TEXT NOT NULL, source TEXT NOT NULL, parts TEXT NOT NULL DEFAULT '[]',
+  supersedes INTEGER REFERENCES claims(id), superseded_by INTEGER REFERENCES claims(id), retired_at INTEGER,
+  created_by INTEGER REFERENCES users(id), created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS claim_approvals (
+  claim_id INTEGER NOT NULL REFERENCES claims(id) ON DELETE CASCADE, capacity TEXT NOT NULL CHECK (capacity IN ('product','legal','privacy')),
+  user_id INTEGER NOT NULL REFERENCES users(id), at INTEGER NOT NULL, PRIMARY KEY (claim_id, capacity));
+
+-- Level 3: one gap per deal and veto role. Starts as a hint; a person classifies, covers, approves, briefs.
+CREATE TABLE IF NOT EXISTS gaps (
+  id INTEGER PRIMARY KEY, campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE, deal_ref TEXT NOT NULL,
+  profile_key TEXT NOT NULL, signals TEXT NOT NULL DEFAULT '[]',
+  classification TEXT CHECK (classification IN ('notyet','shadow','handled')), classified_by INTEGER REFERENCES users(id), classified_at INTEGER,
+  draft TEXT NOT NULL DEFAULT '[]', draft_version INTEGER NOT NULL DEFAULT 0, draft_source TEXT NOT NULL DEFAULT '',
+  approved_version INTEGER, approved_by INTEGER REFERENCES users(id), approved_at INTEGER, approval_tests TEXT NOT NULL DEFAULT '{}',
+  briefed_version INTEGER, briefed_by INTEGER REFERENCES users(id), briefed_at INTEGER, briefing TEXT NOT NULL DEFAULT '{}',
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE (campaign_id, deal_ref, profile_key));
+
 CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY, at INTEGER NOT NULL, actor_id INTEGER, action TEXT NOT NULL,
   campaign_id INTEGER, data TEXT NOT NULL DEFAULT '{}', prev_hash TEXT NOT NULL, hash TEXT NOT NULL);
 `;
 
+const SCHEMA_VERSION = '3';
+
 /**
- * v1 → v2: events gain 'conversation', a text body and an expiry date. SQLite cannot alter a CHECK
- * constraint, so the table is rebuilt inside one transaction (ids are kept, so evidence references stay valid).
+ * Upgrades older databases. v2 added conversations (text body, expiry), v3 added activities.
+ * SQLite cannot alter a CHECK constraint, so the events table is rebuilt inside one transaction.
+ * Ids are kept, so evidence references (E42) stay valid.
  */
 function migrate(db, metaGet, metaSet) {
   const v = metaGet.get('schema_version')?.value;
-  if (!v) return metaSet.run('schema_version', '2'); // fresh database: SCHEMA is already v2
-  if (v === '1') {
-    db.exec('BEGIN IMMEDIATE');
-    try {
-      db.exec(`ALTER TABLE events RENAME TO events_v1;
-        DROP INDEX IF EXISTS events_campaign; DROP INDEX IF EXISTS events_ref;`);
-      db.exec(SCHEMA.match(/CREATE TABLE IF NOT EXISTS events \([\s\S]*?\);[\s\S]*?events_ref[^;]*;/)[0]);
-      db.exec(`INSERT INTO events (id, campaign_id, kind, ref, is_test, fields, amount, at, received_at, source)
-        SELECT id, campaign_id, kind, ref, is_test, fields, amount, at, received_at, source FROM events_v1;
-        DROP TABLE events_v1;`);
-      metaSet.run('schema_version', '2');
-      db.exec('COMMIT');
-    } catch (e) { db.exec('ROLLBACK'); throw e; }
-  }
+  if (!v) return metaSet.run('schema_version', SCHEMA_VERSION); // fresh database: SCHEMA is current
+  if (Number(v) >= Number(SCHEMA_VERSION)) return;
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const old = db.prepare('PRAGMA table_info(events)').all().map(c => c.name);
+    db.exec(`ALTER TABLE events RENAME TO events_old;
+      DROP INDEX IF EXISTS events_campaign; DROP INDEX IF EXISTS events_ref;`);
+    db.exec(SCHEMA.match(/CREATE TABLE IF NOT EXISTS events \([\s\S]*?\);[\s\S]*?events_ref[^;]*;/)[0]);
+    const cols = db.prepare('PRAGMA table_info(events)').all().map(c => c.name).filter(c => old.includes(c)).join(', ');
+    db.exec(`INSERT INTO events (${cols}) SELECT ${cols} FROM events_old; DROP TABLE events_old;`);
+    metaSet.run('schema_version', SCHEMA_VERSION);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
 }
 
 export function openDb(file) {

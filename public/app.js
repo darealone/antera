@@ -65,8 +65,8 @@ function shell() {
   $('#top').hidden = !S.me;
   if (!S.me) return;
   const route = location.hash.split('/')[1] || '';
-  $('#nav').replaceChildren(...[['', 'nav_campaigns'], ['definitions', 'nav_definitions'], ['tasks', 'nav_tasks'], ['audit', 'nav_audit'], ['settings', 'nav_settings']].map(([r, k]) =>
-    h('a', { href: '#/' + r, 'aria-current': (route === r || (r === '' && route === 'c')) ? 'page' : false, text: t(k) })));
+  $('#nav').replaceChildren(...[['', 'nav_campaigns'], ['deals', 'nav_deals'], ['claims', 'nav_claims'], ['definitions', 'nav_definitions'], ['tasks', 'nav_tasks'], ['audit', 'nav_audit'], ['settings', 'nav_settings']].map(([r, k]) =>
+    h('a', { href: '#/' + r, 'aria-current': (route === r || (r === '' && route === 'c') || (r === 'deals' && route === 'd')) ? 'page' : false, text: t(k) })));
   $('#who').textContent = `${S.me.name} · ${t('role_' + S.me.role)}`;
   $('#logout').textContent = t('logout');
 }
@@ -79,9 +79,12 @@ async function render() {
   if (S.config.needsSetup) { shell(); return viewSetup(); }
   if (!S.me) { shell(); return viewLogin(); }
   shell();
-  const [, route, id] = location.hash.split('/');
+  const [, route, id, ref] = location.hash.split('/');
   try {
     if (route === 'c' && id) await viewCampaign(Number(id));
+    else if (route === 'd' && id && ref) await viewDeal(Number(id), decodeURIComponent(ref));
+    else if (route === 'deals') await viewDeals();
+    else if (route === 'claims') await viewClaims();
     else if (route === 'definitions') await viewDefinitions();
     else if (route === 'tasks') await viewTasks();
     else if (route === 'audit') await viewAudit();
@@ -348,7 +351,7 @@ function crit(c) {
 }
 
 async function viewDefinitions() {
-  const defs = await api('/definitions');
+  const [defs, profiles] = await Promise.all([api('/definitions'), api('/veto-profiles')]);
   const groups = new Map();
   for (const d of defs) { if (!groups.has(d.key)) groups.set(d.key, []); groups.get(d.key).push(d); }
   const slot = h('div');
@@ -383,7 +386,233 @@ async function viewDefinitions() {
         versions.length > 1 ? h('details', { class: 'more' }, h('summary', { text: `${t('older')} (${versions.length - 1})` }),
           ...versions.filter(v => v !== cur).map(v => h('div', { class: 'small' }, h('b', { text: `v${v.version}` }), ' ', v.criteria.map(crit).join(' · '), v.note ? h('div', { class: 'muted', text: '“' + v.note + '”' }) : null))) : null,
         isAdmin() ? h('button', { class: 'ghost small', text: t('new_version'), onclick: () => openForm(cur) }) : null);
-    })));
+    })),
+    profilesSection(profiles));
+}
+
+// ---------- Level 3: decision portability ----------
+const roleLabel = (profiles, key) => profiles.find(p => p.key === key)?.label ?? key;
+const signalText = (prefix, s, label) => (has(prefix + s.code) ? t(prefix + s.code, { ...s.params, role: label }) : null);
+
+async function viewDeals() {
+  const { deals, handoffs, stats } = await api('/deals');
+  main.replaceChildren(
+    h('span', { class: 'kicker', text: t('l3_kicker') }), h('h1', { text: t('deals_title') }),
+    h('p', { class: 'sub', text: t('deals_sub') }),
+    h('div', { class: 'grid4' }, ...[['hints', 'st_hints'], ['confirmed', 'st_confirmed'], ['dismissed', 'st_dismissed'], ['briefed', 'st_briefed']].map(([k, l]) =>
+      h('div', { class: 'panel stat' }, h('b', { text: stats[k] }), h('span', { class: 'small muted', text: t(l) })))),
+    h('p', { class: 'small muted', text: t('calibration_note') }),
+    h('h2', { text: t('open_deals') }),
+    deals.length ? h('div', { class: 'cards' }, ...deals.map(d => h('a', { class: 'card', href: `#/d/${d.campaign_id}/${encodeURIComponent(d.ref)}` },
+      h('div', { class: 'row between' }, h('span', { class: 'tag mono', text: d.ref }), badge(d.summary.overall, 'ov_')),
+      h('h3', { text: d.campaign_name }),
+      h('div', { class: 'small muted', text: t('deal_meta', { day: d.day, stage: d.stage ?? '—', size: d.company_size ?? '—' }) }),
+      h('div', { class: 'small', text: t('deal_counts', { hints: d.summary.hints, risks: d.summary.risks, prepared: d.summary.prepared }) })))) : h('div', { class: 'empty', text: t('no_deals') }),
+    handoffs.length ? h('section', { class: 'panel stack' }, h('h2', { text: t('l2_handoffs') }), h('p', { class: 'small muted', text: t('l2_handoffs_sub') }),
+      h('div', { class: 'tablewrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', { text: 'Deal' }), h('th', { text: t('crm_says') }), h('th', { text: t('convo_says') }), h('th', { text: t('campaign') }))),
+        h('tbody', {}, ...handoffs.map(x => h('tr', {}, h('td', { class: 'mono nowrap', text: x.deal_ref }), h('td', { class: 'nowrap', text: x.crm_reason }), h('td', { text: x.conversation_signal }),
+          h('td', {}, h('a', { href: '#/c/' + x.campaign_id, text: x.campaign_name })))))))) : null);
+}
+
+async function viewDeal(cid, ref, selected) {
+  const d = await api(`/deals/${cid}/${encodeURIComponent(ref)}`);
+  const reload = key => viewDeal(cid, ref, key);
+  const profiles = d.roles.map(r => r.profile);
+  const withGap = d.roles.filter(r => r.gap);
+  const pick = selected ?? (withGap.find(r => r.gap.state === 'hint') ?? withGap[0] ?? d.roles[0])?.profile.key;
+  const detail = h('div', { class: 'stack' });
+
+  const state = r => r.gap?.state ?? 'none';
+  const groups = [['in', 'grp_in'], ['mention', 'grp_mention'], ['never', 'grp_never']];
+  const map = h('div', { class: 'map' }, ...groups.map(([g, label]) => h('div', { class: 'mapgroup' }, h('span', { class: 'label', text: t(label) }),
+    ...d.roles.filter(r => r.group === g).map(r => h('button', { class: `role g-${state(r)}`, 'aria-pressed': r.profile.key === pick ? 'true' : 'false', type: 'button',
+      onclick: e => { for (const b of map.querySelectorAll('.role')) b.setAttribute('aria-pressed', b === e.currentTarget ? 'true' : 'false'); showRole(r); } },
+      h('b', { text: r.profile.label }), h('span', { class: 'small', text: r.gap ? t('gs_' + r.gap.state) : t('gs_none') }))))));
+  const legend = h('div', { class: 'legend' }, ...['hint', 'risk', 'in_progress', 'prepared'].map(s => h('span', {}, h('i', { class: 'g-' + s }), t('gs_' + s))));
+
+  const unclassified = withGap.filter(r => r.gap.state === 'hint');
+  const ask = unclassified.length ? h('section', { class: 'askbox stack' }, h('b', { text: t('ask_title') }),
+    h('p', { class: 'small', text: t('ask_sub') }),
+    h('pre', { text: t('ask_text', { roles: unclassified.map(r => r.profile.label).join(', ') }) }),
+    h('button', { class: 'ghost small', text: t('copy'), onclick: () => navigator.clipboard?.writeText(t('ask_text', { roles: unclassified.map(r => r.profile.label).join(', ') })).then(() => toast(t('copied'))) })) : null;
+
+  function showRole(r) {
+    const p = r.profile, g = r.gap;
+    const head = h('div', { class: 'stack' },
+      h('div', { class: 'row between' }, h('h2', { text: p.label }), g ? badge(g.state, 'gs_') : null),
+      h('dl', { class: 'kv plain' }, h('dt', { text: t('veto') }), h('dd', { text: t('veto_' + p.veto) }), h('dt', { text: t('approves') }), h('dd', { text: p.approves }), h('dt', { text: t('their_question') }), h('dd', { text: '“' + p.question + '”' })));
+    if (!g) return detail.replaceChildren(panel(null, head, h('p', { class: 'small muted', text: t('no_signal_role') })));
+    // Several signals often rest on the same call note: show each quote once, later ones point back to it.
+    const shown = new Set();
+    const quoteOnce = s => { if (!s.quote) return null; if (shown.has(s.quote)) return h('p', { class: 'small muted', text: t('same_quote') }); shown.add(s.quote); return h('blockquote', { text: s.quote }); };
+    const signals = h('div', {}, ...g.signals.map(s => h('div', { class: 'find' },
+      h('div', { class: 'head' }, h('span', { class: 'tag', text: s.code.slice(0, 3) }), h('b', { text: t('sig_' + s.code) }), h('span', { class: 'tag', text: t(s.code.startsWith('S01') || s.code.startsWith('S03') ? 'by_rule' : 'by_keyword') })),
+      h('dl', { class: 'oiv' },
+        h('dt', { class: 'o', text: t('observed') }), h('dd', {}, signalText('o_', s, p.label), quoteOnce(s), h('span', { class: 'chips' }, ...s.evidence.map(e => h('span', { class: 'chip', text: e })))),
+        h('dt', { class: 'i', text: t('inferred') }), h('dd', { text: signalText('i_', s, p.label) }),
+        h('dt', { class: 'v', text: t('verify') }), h('dd', { text: signalText('v_', s, p.label) })))));
+    detail.replaceChildren(panel(null, head, h('p', { class: 'notice', text: t('honest_note') }), signals, stepArea(r, d, reload)));
+  }
+
+  main.replaceChildren(
+    h('a', { href: '#/deals', class: 'small muted', text: t('back_deals') }),
+    h('div', {}, h('span', { class: 'kicker', text: t('l3_kicker') }), h('h1', { text: `${d.deal.ref} · ${d.deal.campaign_name}` }),
+      h('p', { class: 'small muted', text: t('deal_meta', { day: d.deal.day, stage: d.deal.stage ?? '—', size: d.deal.company_size ?? '—' }) })),
+    h('section', { class: 'hero s-' + d.summary.overall },
+      h('div', { class: 'row' }, badge(d.summary.overall, 'ov_'), h('span', { class: 'small muted', text: t('deal_counts', { hints: d.summary.hints, risks: d.summary.risks, prepared: d.summary.prepared }) })),
+      h('div', { class: 'big', text: t('ovh_' + d.summary.overall) }), h('p', { class: 'muted', text: t('l3_rule') })),
+    h('div', { class: 'grid2' }, h('div', { class: 'stack' }, panel(t('map_title'), map, legend), ask), detail));
+  const first = d.roles.find(r => r.profile.key === pick);
+  if (first) showRole(first);
+}
+
+/** The four steps for one gap: classify, cover, approve, brief. */
+function stepArea(r, d, reload) {
+  const g = r.gap, p = r.profile, key = p.key;
+  const steps = h('ol', { class: 'steps' }, ...['step1', 'step2', 'step3', 'step4'].map((s, i) => h('li', { class: g.step === i + 1 ? 'now' : (g.step === null || (g.step ?? 0) > i + 1) && g.state !== 'hint' && g.state !== 'dismissed' ? 'done' : '', text: t(s) })));
+  const box = h('div', { class: 'stack stepbox' });
+  // Native append() prints null as text; skip empty parts.
+  const add = (...kids) => add(...kids.filter(k => k !== null && k !== undefined && k !== false));
+  const post = (path, body, ok) => async e => act(e?.currentTarget, async () => { await api(path, { method: 'POST', body }); if (ok) toast(ok); reload(key); });
+
+  // Step 1: what is behind the hint?
+  if (g.state === 'hint') {
+    add(h('b', { text: t('s1_title') }), h('p', { class: 'small', text: t('s1_sub') }),
+      h('div', { class: 'row' }, h('button', { class: 'primary small', text: t('cl_notyet'), onclick: post(`/gaps/${g.id}/classify`, { classification: 'notyet' }) }),
+        h('button', { class: 'primary small', text: t('cl_shadow'), onclick: post(`/gaps/${g.id}/classify`, { classification: 'shadow' }) }),
+        h('button', { class: 'ghost small', text: t('cl_handled'), onclick: post(`/gaps/${g.id}/classify`, { classification: 'handled' }) })),
+      h('p', { class: 'small muted', text: t('s1_note') }));
+    return h('div', { class: 'stack' }, steps, box);
+  }
+  if (g.state === 'dismissed') {
+    add(h('p', { text: t('dismissed_text') }), h('button', { class: 'ghost small', text: t('undo'), onclick: post(`/gaps/${g.id}/classify`, { classification: null }) }));
+    return h('div', { class: 'stack' }, steps, box);
+  }
+  add(h('p', { class: 'mode', text: t('mode_' + g.classification, { role: p.label }) }));
+
+  // Step 2 + 3: the draft, checked line by line, and the coverage of the role's question.
+  const lines = g.draft.map(l => ({ ...l }));
+  const raw = () => lines.map(l => l.kind === 'claim' ? { kind: 'claim', claim_id: l.claim_id } : l.kind === 'evidence' ? { kind: 'evidence', evidence_id: l.evidence_id, quote: l.text } : { kind: l.kind, text: l.text });
+  const save = (next, e) => act(e?.currentTarget, async () => { await api(`/gaps/${g.id}/draft`, { method: 'POST', body: { lines: next } }); reload(key); });
+  const list = h('ol', { class: 'draft' }, ...lines.map((l, i) => h('li', { class: 'ln ' + (l.ok ? 'ok' : 'warn') + ' k-' + l.kind },
+    h('span', { class: 'tag', text: t('lk_' + l.kind) }),
+    h('span', { class: 'lt' }, l.text ?? '—', l.source ? h('i', { text: ' · ' + l.source }) : null, l.evidence_id ? h('span', { class: 'chip', text: l.evidence_id }) : null),
+    !l.ok ? h('span', { class: 'small bad', text: t('why_' + l.reason) }) : null,
+    h('button', { class: 'ghost small', type: 'button', 'aria-label': t('remove'), text: '✕', onclick: e => save(raw().filter((_, j) => j !== i), e) }))));
+
+  // The role's own claims first, then general ones.
+  const usable = [...d.claims.filter(c => c.topic === key), ...d.claims.filter(c => c.topic === 'general')];
+  const claimSel = h('select', {}, h('option', { value: '', text: t('pick_claim') }), ...usable.map(c => h('option', { value: c.id, text: `#${c.id} ${c.text.slice(0, 80)}` })));
+  const convoSel = h('select', {}, ...d.conversations.map(c => h('option', { value: c.id, text: `${c.id} · ${fmtDate(c.at)} · ${c.body.slice(0, 50)}…` })));
+  const quote = h('input', { placeholder: t('quote_ph') });
+  const rec = h('input', { placeholder: t('rec_ph') });
+  const adders = h('details', { class: 'more' }, h('summary', { text: t('add_lines') }), h('div', { class: 'stack' },
+    h('div', { class: 'row' }, claimSel, h('button', { class: 'ghost small', type: 'button', text: t('add'), onclick: e => claimSel.value && save([...raw(), { kind: 'claim', claim_id: Number(claimSel.value) }], e) })),
+    usable.length ? null : h('p', { class: 'small warn', text: t('no_claims_for_role') }),
+    d.conversations.length ? h('div', { class: 'row' }, convoSel, quote, h('button', { class: 'ghost small', type: 'button', text: t('add'), onclick: e => quote.value.trim() && save([...raw(), { kind: 'evidence', evidence_id: convoSel.value, quote: quote.value }], e) })) : null,
+    h('div', { class: 'row' }, rec, h('button', { class: 'ghost small', type: 'button', text: t('add'), onclick: e => rec.value.trim() && save([...raw(), { kind: 'recommendation', text: rec.value }], e) })),
+    h('p', { class: 'small muted', text: t('lines_rule') })));
+  const aiBtn = h('button', { class: 'ghost small', disabled: d.drafter !== 'ready', title: d.drafter !== 'ready' ? t('inv_status_' + d.drafter) : '', text: t('ai_draft'),
+    onclick: e => act(e.currentTarget, async () => { const r2 = await api(`/gaps/${g.id}/ai-draft`, { method: 'POST' }); if (r2.note) toast(r2.note); reload(key); }) });
+
+  const cov = h('ul', { class: 'cov' }, ...g.coverage.parts.map(x => h('li', { class: x.covered ? 'ok' : 'open', text: x.text })));
+  add(h('div', { class: 'row between' }, h('b', { text: t('s2_title') }), aiBtn),
+    g.draft_source === 'ai' ? h('p', { class: 'small muted', text: t('ai_note') }) : null,
+    lines.length ? list : h('p', { class: 'small muted', text: t('draft_empty') }), adders,
+    h('b', { text: t('cov_title', { level: t('cov_' + g.coverage.level) }) }), cov,
+    g.coverage.level !== 'full' ? h('p', { class: 'small warn', text: t('cov_open_note') }) : null);
+
+  if (g.step === 3) {
+    const tests = ['corridor', 'protection', 'room'].map(k => h('label', { class: 'check' }, h('input', { type: 'checkbox', name: k }), ' ', t('test_' + k)));
+    add(h('b', { text: t('s3_title') }), g.staleApproval ? h('p', { class: 'small warn', text: t('stale_approval') }) : null, ...tests,
+      h('div', { class: 'row' }, h('button', { class: 'primary small', disabled: g.blocked || !lines.some(l => l.kind === 'claim' || l.kind === 'evidence'), text: t('approve_draft'),
+        onclick: post(`/gaps/${g.id}/approve`, { get tests() { return Object.fromEntries(tests.map(l => [l.querySelector('input').name, l.querySelector('input').checked])); } }, t('saved')) }),
+        h('span', { class: 'small ' + (g.blocked ? 'bad' : 'muted'), text: g.blocked ? t('approve_blocked') : t('approve_owner') })));
+  }
+  if (g.step === 4) {
+    const date = h('input', { type: 'date', value: new Date().toISOString().slice(0, 10) });
+    const who = h('input', { placeholder: t('participants_ph') });
+    const note = h('input', { placeholder: t('note_ph') });
+    const mode = g.classification === 'shadow' ? 'handover' : 'briefing';
+    add(h('b', { text: t('s4_' + mode) }), h('p', { class: 'small', text: t('s4_' + mode + '_sub', { role: p.label }) }),
+      h('div', { class: 'row' }, date, who, note),
+      h('div', { class: 'row' }, h('button', { class: 'primary small', text: t('log_' + mode), onclick: e => act(e.currentTarget, async () => {
+        await api(`/gaps/${g.id}/brief`, { method: 'POST', body: { date: date.value, participants: who.value, note: note.value } }); toast(t('saved')); reload(key); }) }),
+        h('span', { class: 'small muted', text: t('brief_note') })));
+  }
+  if (g.state === 'prepared' || g.state === 'briefed_partial') {
+    const b = g.briefing;
+    add(h('div', { class: g.state === 'prepared' ? 'okbox' : 'warnbox' }, h('b', { text: t('res_' + g.state) }),
+      h('p', { class: 'small', text: t('res_' + g.state + '_text', { open: g.coverage.parts.filter(x => !x.covered).map(x => x.text).join('; ') }) }),
+      h('p', { class: 'small muted', text: t('briefed_on', { mode: t('mode_word_' + b.mode), date: b.date, who: b.participants || '—', by: r.gap.briefed_by_name ?? '—' }) })));
+  }
+  // The champion pack: approved claims only, to copy. ANTERA never sends anything itself.
+  const pack = g.draft.filter(l => l.ok && l.kind === 'claim').map(l => '• ' + l.text).join('\n');
+  if (pack) add(h('details', { class: 'more' }, h('summary', { text: t('pack_title') }), h('pre', { text: `${t('pack_head', { role: p.label })}\n“${p.question}”\n\n${pack}` }),
+    h('button', { class: 'ghost small', text: t('copy'), onclick: () => navigator.clipboard?.writeText(`“${p.question}”\n\n${pack}`).then(() => toast(t('copied'))) }), h('p', { class: 'small muted', text: t('pack_note') })));
+  add(h('div', { class: 'row' }, h('button', { class: 'ghost small', text: t('reclassify'), onclick: post(`/gaps/${g.id}/classify`, { classification: null }) })));
+  return h('div', { class: 'stack' }, steps, box);
+}
+
+async function viewClaims() {
+  const [claims, profiles] = await Promise.all([api('/claims'), api('/veto-profiles')]);
+  const active = profiles.filter(p => p.active);
+  const topics = [...active.map(p => p.key), 'general'];
+  const canSign = S.me.role === 'admin' || S.me.role === 'approver';
+  const slot = h('div');
+  const form = (base, onSave) => {
+    const topic = h('select', { name: 'topic', disabled: !!base }, ...topics.map(k => h('option', { value: k, selected: (base?.topic ?? topics[0]) === k, text: k === 'general' ? t('general') : roleLabel(active, k) })));
+    const parts = h('div', { class: 'stack small' });
+    const drawParts = () => parts.replaceChildren(...(active.find(p => p.key === topic.value)?.parts ?? []).map(x => h('label', { class: 'check' }, h('input', { type: 'checkbox', value: x.key, checked: base?.parts?.includes(x.key) }), ' ', x.text)));
+    topic.addEventListener('change', drawParts); drawParts();
+    const text = h('textarea', { name: 'text', required: true, text: base?.text ?? '' });
+    const source = h('input', { name: 'source', required: true, value: base?.source ?? '' });
+    const f = h('form', { class: 'form' }, h('label', { class: 'f' }, t('topic'), topic), h('label', { class: 'f' }, t('claim_text'), text), h('label', { class: 'f' }, t('claim_source'), source),
+      h('div', { class: 'f' }, h('span', { text: t('claim_parts') }), parts),
+      h('div', { class: 'row' }, h('button', { class: 'primary', type: 'submit', text: t('save') }), h('button', { class: 'ghost', type: 'button', onclick: () => slot.replaceChildren(), text: t('cancel') })),
+      h('p', { class: 'small muted', text: t('claim_rule') }));
+    f.addEventListener('submit', e => { e.preventDefault(); act(f.querySelector('button[type=submit]'), () => onSave({ topic: topic.value, text: text.value, source: source.value, parts: [...parts.querySelectorAll('input:checked')].map(i => i.value) })); });
+    return f;
+  };
+  const byTopic = topics.map(k => [k, claims.filter(c => c.topic === k && c.status !== 'superseded')]).filter(([, l]) => l.length);
+  main.replaceChildren(
+    h('div', { class: 'row between' }, h('div', {}, h('span', { class: 'kicker', text: t('l3_kicker') }), h('h1', { text: t('claims_title') })),
+      h('button', { class: 'primary', text: t('new_claim'), onclick: () => slot.replaceChildren(panel(t('new_claim'), form(null, async d => { await api('/claims', { method: 'POST', body: d }); toast(t('saved')); viewClaims(); }))) })),
+    h('p', { class: 'sub', text: t('claims_sub') }), slot,
+    ...byTopic.map(([k, list]) => h('section', { class: 'panel stack' }, h('h2', { text: k === 'general' ? t('general') : roleLabel(active, k) }),
+      ...list.map(c => h('div', { class: 'claim' + (c.status === 'approved' ? '' : ' muted') },
+        h('div', { class: 'row between' }, h('span', { class: 'mono small', text: '#' + c.id }), badge(c.status, 'cs_')),
+        h('p', { text: c.text }), h('p', { class: 'small muted', text: `${t('claim_source')}: ${c.source} · ${t('claim_parts')}: ${c.parts.map(x => active.find(p => p.key === c.topic)?.parts.find(y => y.key === x)?.text ?? x).join('; ') || '—'} · ${t('by_on', { name: c.created_by_name ?? '—', when: fmtDate(c.created_at) })}` }),
+        h('div', { class: 'row small' }, ...['product', 'legal', 'privacy'].map(cap => {
+          const a = c.approvals.find(x => x.capacity === cap);
+          return a ? h('span', { class: 'tag ok', text: `✓ ${t('cap_' + cap)}: ${a.name}` })
+            : c.status === 'pending' && canSign ? h('button', { class: 'ghost small', text: t('sign_as', { cap: t('cap_' + cap) }), onclick: e => act(e.currentTarget, async () => { await api(`/claims/${c.id}/approve`, { method: 'POST', body: { capacity: cap } }); toast(t('saved')); viewClaims(); }) })
+            : h('span', { class: 'tag', text: `○ ${t('cap_' + cap)}` });
+        })),
+        c.status === 'pending' || c.status === 'approved' ? h('div', { class: 'row' },
+          h('button', { class: 'ghost small', text: t('revise'), onclick: () => slot.replaceChildren(panel(t('revise'), form(c, async d => { await api(`/claims/${c.id}/revise`, { method: 'POST', body: d }); toast(t('saved')); viewClaims(); }))) }),
+          h('button', { class: 'ghost small', text: t('retire'), onclick: e => { if (confirm(t('retire') + '?')) act(e.currentTarget, async () => { await api(`/claims/${c.id}/retire`, { method: 'POST' }); viewClaims(); }); } })) : null)))));
+}
+
+function profilesSection(profiles) {
+  const active = profiles.filter(p => p.active);
+  const slot = h('div');
+  const edit = p => {
+    const ta = h('textarea', { class: 'code', text: JSON.stringify({ key: p.key, label: p.label, veto: p.veto, approves: p.approves, question: p.question, parts: p.parts, keywords: p.keywords }, null, 2) });
+    const note = h('input', { required: true, placeholder: t('note') });
+    const f = h('form', { class: 'form' }, ta, note, h('div', { class: 'row' }, h('button', { class: 'primary', type: 'submit', text: t('create') }), h('button', { class: 'ghost', type: 'button', onclick: () => slot.replaceChildren(), text: t('cancel') })));
+    f.addEventListener('submit', e => { e.preventDefault(); act(f.querySelector('button[type=submit]'), async () => {
+      let body; try { body = JSON.parse(ta.value); } catch { throw Object.assign(new Error(), { code: 'INVALID_JSON' }); }
+      await api('/veto-profiles', { method: 'POST', body: { ...body, note: note.value } }); toast(t('saved')); viewDefinitions(); }); });
+    slot.replaceChildren(panel(t('new_version') + ' · ' + p.label, f));
+  };
+  return h('div', { class: 'stack' }, h('h2', { text: t('profiles_title') }), h('p', { class: 'sub', text: t('profiles_sub') }), slot,
+    h('div', { class: 'cards' }, ...active.map(p => h('section', { class: 'panel defcard stack' },
+      h('div', { class: 'row between' }, h('span', { class: 'kicker', text: p.key }), h('span', { class: 'tag', text: `${t('version')} ${p.version} · ${t('veto_' + p.veto)}` })),
+      h('h3', { text: p.label }), h('p', { class: 'small', text: '“' + p.question + '”' }),
+      h('ul', { class: 'crit' }, ...p.parts.map(x => h('li', { text: x.text }))),
+      h('p', { class: 'small muted', text: t('keywords') + ': ' + p.keywords.join(', ') }),
+      isAdmin() ? h('button', { class: 'ghost small', text: t('new_version'), onclick: () => edit(p) }) : null))));
 }
 
 // ---------- tasks ----------

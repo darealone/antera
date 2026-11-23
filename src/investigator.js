@@ -5,14 +5,14 @@
 // `submit_findings`, and code then checks every "observed" statement against the evidence ids the tools
 // actually returned in this run. Claims without valid evidence are removed and listed as unsupported.
 //
-// The agent loop is written out (not the SDK's beta tool runner) so that tests can drive it with a scripted
-// client, and so that turn limits, tool logging and the evidence check stay under ANTERA's control.
+// The agent loop itself lives in agent.js and is shared with the Level 3 drafter.
 import { createEvidenceTools, TOOL_DEFS } from './evidence.js';
+import { runAgent } from './agent.js';
+export { estimateCost } from './agent.js';
 
 export const INVESTIGATOR_VERSION = 'investigator-2026.1';
 
 const LIMITS = { findings: 6, observed: 6, handoffs: 10, nextRun: 4, text: 1200 };
-const PRICE = { 'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 } }; // USD per 1M tokens
 
 const strArr = { type: 'array', items: { type: 'string' } };
 export const SUBMIT_TOOL = {
@@ -102,12 +102,6 @@ export function checkFindings(input, handedOut) {
   return { report: { summary: clip(input?.summary, 1500), findings, handoffs, next_run }, unsupported };
 }
 
-export function estimateCost(model, usage) {
-  const p = PRICE[model];
-  if (!p) return null;
-  const usd = (usage.input * p.input + usage.output * p.output + usage.cacheRead * p.cacheRead + usage.cacheWrite * p.cacheWrite) / 1e6;
-  return Math.round(usd * 10000) / 10000;
-}
 
 /**
  * Runs one investigation. `client` is an Anthropic SDK client (or a test double with beta.messages.create).
@@ -115,61 +109,14 @@ export function estimateCost(model, usage) {
  */
 export async function investigate({ client, db, campaign, definitions, settings, language = 'en', model = 'claude-opus-5-5', effort = 'high', maxTurns = 12 }) {
   const { tools, handedOut } = createEvidenceTools(db, campaign, { definitions, opportunityKey: settings?.opportunityKey });
-  const toolCalls = [];
-  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0 };
-  const finish = (status, extra = {}) => ({ status, toolCalls, usage: { ...usage, usd: estimateCost(model, usage) }, model, ...extra });
-  const messages = [{
-    role: 'user',
-    content: `Investigate campaign #${campaign.id} "${campaign.name}" (channel: ${campaign.channel || 'unknown'}, goal definition: "${campaign.goal_key}", state: ${campaign.state}). Why did this run lose leads or deals, and what should the next run change?`
-  }];
-  let reminded = false;
-
-  for (let turn = 0; turn < maxTurns; turn++) {
-    const res = await client.beta.messages.create({
-      model, max_tokens: 16000,
-      betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', // a safety decline is retried on a suitable model
-      output_config: { effort },
-      cache_control: { type: 'ephemeral' }, // system prompt and tools are identical on every turn
-      system: systemPrompt(language),
-      tools: [...TOOL_DEFS, SUBMIT_TOOL],
-      messages
-    });
-    usage.requests++;
-    usage.input += res.usage?.input_tokens ?? 0; usage.output += res.usage?.output_tokens ?? 0;
-    usage.cacheRead += res.usage?.cache_read_input_tokens ?? 0; usage.cacheWrite += res.usage?.cache_creation_input_tokens ?? 0;
-    const served = res.model ?? model;
-
-    if (res.stop_reason === 'refusal') return finish('refused', { error: 'REFUSED', detail: res.stop_details?.category ?? null, servedBy: served });
-    if (res.stop_reason === 'max_tokens') return finish('failed', { error: 'MAX_TOKENS' });
-    messages.push({ role: 'assistant', content: res.content }); // thinking blocks are passed back unchanged
-    if (res.stop_reason === 'pause_turn') continue;
-
-    const calls = res.content.filter(b => b.type === 'tool_use');
-    const submit = calls.find(b => b.name === 'submit_findings');
-    if (submit) {
-      toolCalls.push({ tool: 'submit_findings', input: null, ids: 0 });
-      const { report, unsupported } = checkFindings(submit.input, handedOut);
-      return finish('done', { report, unsupported, servedBy: served, evidenceHandedOut: handedOut.size });
-    }
-    if (!calls.length) {
-      if (reminded) return finish('failed', { error: 'NO_FINDINGS' });
-      reminded = true;
-      messages.push({ role: 'user', content: 'Please finish by calling submit_findings with what the evidence supports.' });
-      continue;
-    }
-    const results = [];
-    for (const call of calls) {
-      const fn = tools[call.name];
-      const before = handedOut.size;
-      let content, isError = false;
-      try {
-        if (!fn) throw new Error('Unknown tool');
-        content = JSON.stringify(fn(call.input ?? {}));
-      } catch (e) { content = JSON.stringify({ error: e.message }); isError = true; }
-      toolCalls.push({ tool: call.name, input: call.input ?? {}, ids: handedOut.size - before, error: isError || undefined });
-      results.push({ type: 'tool_result', tool_use_id: call.id, content, ...(isError ? { is_error: true } : {}) });
-    }
-    messages.push({ role: 'user', content: results });
-  }
-  return finish('failed', { error: 'MAX_TURNS' });
+  return runAgent({
+    client, model, effort, maxTurns,
+    system: systemPrompt(language),
+    tools: [...TOOL_DEFS, SUBMIT_TOOL],
+    handlers: tools,
+    submit: 'submit_findings',
+    countIds: () => handedOut.size,
+    task: `Investigate campaign #${campaign.id} "${campaign.name}" (channel: ${campaign.channel || 'unknown'}, goal definition: "${campaign.goal_key}", state: ${campaign.state}). Why did this run lose leads or deals, and what should the next run change?`,
+    onSubmit: input => ({ ...checkFindings(input, handedOut), evidenceHandedOut: handedOut.size })
+  });
 }

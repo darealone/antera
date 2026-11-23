@@ -8,6 +8,8 @@ import { prepareEvents } from './ingest.js';
 import { createAdapter, createNotifier } from './adapters.js';
 import { hashPassword, verifyPassword, strip, can, newToken, sha } from './auth.js';
 import { investigate, INVESTIGATOR_VERSION } from './investigator.js';
+import { createPortability } from './portability-service.js';
+import { draft } from './drafter.js';
 
 export class HttpError extends Error {
   constructor(status, code, detail) { super(code); this.status = status; this.code = code; this.detail = detail; }
@@ -557,7 +559,18 @@ export function createService(db, config, { clock = () => Date.now(), fetch: fet
     startInvestigation(null, id, { trigger: 'event' }).catch(e => log.error?.(`Auto-investigation for campaign ${id}: ${e.code ?? e.message}`));
   }
 
+  // ---------- Level 3: decision portability ----------
+  const portability = createPortability(db, config, {
+    clock, notify,
+    draftWithAgent: {
+      status: () => investigatorStatus(),
+      run: args => draft({ client: getClient(), language: config.language, model: config.investigator.model, effort: config.investigator.effort, ...args })
+    }
+  });
+  portability.ensureDefaultProfiles();
+
   return {
+    ...portability,
     needsSetup, createUser, login, listUsers, updateUser, changeOwnPassword, listTokens, createToken, revokeToken,
     activeDefinitions, listDefinitions, createDefinitionVersion,
     createCampaign, updateCampaign, listCampaigns, getCampaign, runChecks, recheckAll,

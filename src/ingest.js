@@ -3,7 +3,9 @@
 // Pure functions: the caller passes the salt, the campaign lookup and the clock.
 import { createHash } from 'node:crypto';
 
-export const KINDS = Object.freeze(['form_submit', 'crm_record', 'spend', 'deal', 'conversation']);
+export const KINDS = Object.freeze(['form_submit', 'crm_record', 'spend', 'deal', 'conversation', 'activity']);
+export const ACTIVITY_TYPES = Object.freeze(['meeting', 'call', 'email', 'document', 'escalation']);
+const ROLE_RE = /^[a-z][a-z0-9_]{1,30}$/;
 export const MAX_TEXT = 20_000;
 
 /**
@@ -63,7 +65,8 @@ export function prepareEvents(events, { salt, now, resolveCampaign }) {
   if (!Array.isArray(events)) return { accepted: [], rejected: [{ index: -1, error: 'EVENTS_MUST_BE_A_LIST' }], dropped: [] };
   if (events.length > MAX_EVENTS) return { accepted: [], rejected: [{ index: -1, error: 'TOO_MANY_EVENTS' }], dropped: [] };
   const accepted = [], rejected = [], dropped = new Set();
-  events.forEach((e, index) => {
+  events.forEach((e0, index) => {
+    let e = e0;
     if (!e || typeof e !== 'object') return rejected.push({ index, error: 'NOT_AN_OBJECT' });
     if (!KINDS.includes(e.kind)) return rejected.push({ index, error: 'UNKNOWN_KIND' });
     const campaignId = resolveCampaign(e);
@@ -89,6 +92,14 @@ export function prepareEvents(events, { salt, now, resolveCampaign }) {
       if (typeof e.text !== 'string' || !e.text.trim()) return rejected.push({ index, error: 'TEXT_REQUIRED' });
       if (e.text.length > MAX_TEXT) return rejected.push({ index, error: 'TEXT_TOO_LONG' });
       body = scrubText(e.text.trim());
+    }
+    // Activities (meetings, emails, documents) name the ROLES involved, never people: "finance,it_security".
+    if (e.kind === 'activity') {
+      const type = e.fields?.type;
+      const roles = String(e.fields?.roles ?? '').split(',').map(r => r.trim().toLowerCase()).filter(Boolean);
+      if (!ACTIVITY_TYPES.includes(type)) return rejected.push({ index, error: 'INVALID_ACTIVITY_TYPE' });
+      if (!roles.length || roles.some(r => !ROLE_RE.test(r))) return rejected.push({ index, error: 'INVALID_ROLES' });
+      e = { ...e, fields: { type, roles: [...new Set(roles)].join(',') } };
     }
     accepted.push({ campaign_id: campaignId, kind: e.kind, ref, is_test: e.test ? 1 : 0, fields: cleanFields(e.fields, dropped), amount, at, source: String(e.source ?? '').slice(0, 40), body });
   });

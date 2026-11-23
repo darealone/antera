@@ -26,7 +26,7 @@ function args(argv) {
   return out;
 }
 
-const HELP = `ANTERA ${pkg.version} — decisions that hold (Foundation, Level 1: Prevent, Level 2: Understand)
+const HELP = `ANTERA ${pkg.version} — decisions that hold (Foundation, Level 1: Prevent, Level 2: Understand, Level 3: Decision portability)
 
 Usage:
   antera serve [--port 8080] [--host 127.0.0.1] [--data ./data/antera.db]
@@ -78,7 +78,7 @@ if (cmd === 'serve') {
     if (demo && svc.needsSetup()) {
       const { seedDemo, DEMO_PASSWORD } = await import('../src/demo.js');
       await seedDemo(svc, db);
-      console.log(`  Demo logins (password "${DEMO_PASSWORD}"): alex@example.test (admin), sam@example.test (approver), kim@example.test (marketing)`);
+      console.log(`  Demo logins (password "${DEMO_PASSWORD}"): alex@example.test (admin), sam@example.test (approver), pat@example.test (approver, legal), kim@example.test (marketing)`);
     }
     console.log(`ANTERA ${pkg.version} running on ${base}`);
     console.log(`  data:    ${dbFile}`);

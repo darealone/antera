@@ -238,7 +238,7 @@ test('checkFindings: pure evidence check', () => {
   assert.ok(TOOL_DEFS.length === 6 && SUBMIT_TOOL.strict);
 });
 
-test('migration: a v0.1 database is upgraded in place, keeping event ids', () => {
+test('migration: a v0.1 database is upgraded in place to the current schema, keeping event ids', () => {
   const file = join(mkdtempSync(join(tmpdir(), 'antera-')), 'v1.db');
   const raw = new DatabaseSync(file);
   raw.exec(`CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO meta VALUES ('schema_version','1');
@@ -250,10 +250,11 @@ test('migration: a v0.1 database is upgraded in place, keeping event ids', () =>
     INSERT INTO events (id, campaign_id, kind, ref, at, received_at) VALUES (42, 1, 'deal', 'd1', 1, 1);`);
   raw.close();
   const d = openDb(file);
-  assert.equal(d.meta.get('schema_version'), '2');
+  assert.equal(d.meta.get('schema_version'), '3');
   assert.equal(d.get('SELECT ref FROM events WHERE id = 42').ref, 'd1', 'evidence ids survive the upgrade');
   d.run("INSERT INTO events (campaign_id, kind, ref, at, received_at, body) VALUES (1, 'conversation', 'd1', 2, 2, 'hi')");
   assert.equal(d.get("SELECT COUNT(*) AS n FROM events WHERE kind = 'conversation'").n, 1);
   d.close();
-  assert.equal(openDb(file).meta.get('schema_version'), '2', 'opening again is a no-op');
+  assert.equal(openDb(file).meta.get('schema_version'), '3', 'opening again is a no-op');
+  const d2 = openDb(file); d2.run("INSERT INTO events (campaign_id, kind, ref, at, received_at) VALUES (1, 'activity', 'd1', 3, 3)"); d2.close();
 });

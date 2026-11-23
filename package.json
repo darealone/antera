@@ -1,7 +1,7 @@
 {
   "name": "antera",
-  "version": "0.2.0",
-  "description": "Decision assurance for marketing and sales. Level 1 checks the chain from click to deal and pauses spend when it breaks; Level 2 investigates lost deals read-only, with every claim checked against evidence. May stop, never start.",
+  "version": "0.3.0",
+  "description": "Decision assurance for marketing and sales. Level 1 checks the chain from click to deal and pauses spend when it breaks; Level 2 investigates lost deals read-only, with every claim checked against evidence; Level 3 prepares champions for the rooms the seller never enters. May stop, never start.",
   "type": "module",
   "license": "Apache-2.0",
   "homepage": "https://darealone.github.io/aether-hive/antera/",
